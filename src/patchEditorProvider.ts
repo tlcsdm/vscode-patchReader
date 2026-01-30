@@ -517,8 +517,9 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     });
                 });
                 
-                // Handle content editing
+                // Handle content editing with debounce
                 if (contentOutput) {
+                    let debounceTimer = null;
                     contentOutput.addEventListener('input', () => {
                         const newContent = contentOutput.value;
                         if (newContent !== currentContent) {
@@ -527,7 +528,14 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                                 type: 'edit',
                                 content: newContent
                             });
-                            renderDiff();
+                            // Debounce renderDiff to avoid performance issues with large diffs
+                            if (debounceTimer) {
+                                clearTimeout(debounceTimer);
+                            }
+                            debounceTimer = setTimeout(() => {
+                                renderDiff();
+                                debounceTimer = null;
+                            }, 300);
                         }
                     });
                 }
@@ -621,7 +629,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 }
                 
                 // Check if Diff2Html is available
-                const Diff2HtmlLib = typeof Diff2Html !== 'undefined' ? Diff2Html : (typeof window !== 'undefined' ? window.Diff2Html : undefined);
+                const Diff2HtmlLib = typeof Diff2Html !== 'undefined' ? Diff2Html : window.Diff2Html;
                 if (!Diff2HtmlLib) {
                     const errorMsg = 'Diff2Html library is not loaded. Please reload the editor.';
                     vscode.postMessage({
