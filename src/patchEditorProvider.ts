@@ -48,6 +48,19 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     /**
+     * Apply edit from webview to the document
+     */
+    private async applyEdit(document: vscode.TextDocument, newContent: string): Promise<void> {
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(
+            document.uri,
+            new vscode.Range(0, 0, document.lineCount, 0),
+            newContent
+        );
+        await vscode.workspace.applyEdit(edit);
+    }
+
+    /**
      * Called when a custom editor is opened
      */
     public async resolveCustomTextEditor(
@@ -84,13 +97,16 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         );
 
         // Handle messages from the webview
-        webviewPanel.webview.onDidReceiveMessage(message => {
+        webviewPanel.webview.onDidReceiveMessage(async message => {
             switch (message.type) {
                 case 'viewModeChanged':
                     this.currentViewMode = message.viewMode;
                     break;
                 case 'error':
                     this.logError(message.message, message.error);
+                    break;
+                case 'edit':
+                    await this.applyEdit(document, message.content);
                     break;
             }
         });
@@ -292,41 +308,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             border: none;
             white-space: pre;
             tab-size: 4;
-        }
-
-        /* Content tab syntax highlighting for diff */
-        #content-output .diff-file-header {
-            color: var(--vscode-textPreformat-foreground, #d4d4d4);
-            font-weight: bold;
-        }
-
-        #content-output .diff-hunk-header {
-            color: #4ec9b0;
-        }
-
-        #content-output .diff-deleted {
-            color: #f14c4c;
-        }
-
-        #content-output .diff-added {
-            color: #23d18b;
-        }
-
-        #content-output .diff-context {
-            color: var(--text-primary);
-        }
-
-        /* Light theme overrides for Content tab */
-        body.vscode-light #content-output .diff-hunk-header {
-            color: #267f99;
-        }
-
-        body.vscode-light #content-output .diff-deleted {
-            color: #cd3131;
-        }
-
-        body.vscode-light #content-output .diff-added {
-            color: #107c10;
+            resize: none;
+            outline: none;
         }
 
         .placeholder {
@@ -478,7 +461,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 <div id="diff-output"></div>
             </div>
             <div id="content-tab" class="tab-content" role="tabpanel" aria-labelledby="content-tab-btn">
-                <pre id="content-output"></pre>
+                <textarea id="content-output" spellcheck="false"></textarea>
             </div>
         </div>
         <div class="header">
@@ -534,6 +517,21 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     });
                 });
                 
+                // Handle content editing
+                if (contentOutput) {
+                    contentOutput.addEventListener('input', () => {
+                        const newContent = contentOutput.value;
+                        if (newContent !== currentContent) {
+                            currentContent = newContent;
+                            vscode.postMessage({
+                                type: 'edit',
+                                content: newContent
+                            });
+                            renderDiff();
+                        }
+                    });
+                }
+                
                 // Handle messages from extension
                 window.addEventListener('message', event => {
                     const message = event.data;
@@ -588,59 +586,11 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 });
             }
             
-            // Update content tab with raw content and syntax highlighting
+            // Update content tab with raw content
             function updateContentTab() {
                 if (contentOutput) {
-                    if (!currentContent) {
-                        contentOutput.innerHTML = '';
-                        return;
-                    }
-                    
-                    // Parse and highlight diff content
-                    const lines = currentContent.split('\\n');
-                    const highlightedLines = lines.map(line => {
-                        const escapedLine = escapeHtml(line);
-                        
-                        // Hunk header (e.g., @@ -1,3 +1,4 @@)
-                        if (line.startsWith('@@') && line.includes('@@', 2)) {
-                            return '<span class="diff-hunk-header">' + escapedLine + '</span>';
-                        }
-                        // File headers - must use specific patterns
-                        if (line.startsWith('diff --git') || 
-                            line.startsWith('index ') ||
-                            /^--- [ab]\\//.test(line) ||
-                            /^\\+\\+\\+ [ab]\\//.test(line) ||
-                            line === '--- /dev/null' ||
-                            line === '+++ /dev/null') {
-                            return '<span class="diff-file-header">' + escapedLine + '</span>';
-                        }
-                        // Deleted lines
-                        if (line.startsWith('-')) {
-                            return '<span class="diff-deleted">' + escapedLine + '</span>';
-                        }
-                        // Added lines
-                        if (line.startsWith('+')) {
-                            return '<span class="diff-added">' + escapedLine + '</span>';
-                        }
-                        // Context lines (unchanged)
-                        return '<span class="diff-context">' + escapedLine + '</span>';
-                    });
-                    
-                    contentOutput.innerHTML = highlightedLines.join('\\n');
+                    contentOutput.value = currentContent || '';
                 }
-            }
-            
-            // Escape HTML special characters efficiently
-            const htmlEscapes = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;'
-            };
-            
-            function escapeHtml(text) {
-                return text.replace(/[&<>"']/g, char => htmlEscapes[char]);
             }
             
             // Apply VS Code theme
@@ -670,11 +620,24 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     return;
                 }
                 
+                // Check if Diff2Html is available
+                const Diff2HtmlLib = typeof Diff2Html !== 'undefined' ? Diff2Html : (typeof window !== 'undefined' ? window.Diff2Html : undefined);
+                if (!Diff2HtmlLib) {
+                    const errorMsg = 'Diff2Html library is not loaded. Please reload the editor.';
+                    vscode.postMessage({
+                        type: 'error',
+                        message: 'Failed to render diff',
+                        error: 'Diff2Html is not defined'
+                    });
+                    diffOutput.innerHTML = '<div class="placeholder">' + errorMsg + '</div>';
+                    return;
+                }
+                
                 try {
                     const outputFormat = currentViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line';
                     
                     // First, try to parse the diff content
-                    const diffJson = Diff2Html.parse(currentContent, {
+                    const diffJson = Diff2HtmlLib.parse(currentContent, {
                         inputFormat: 'diff'
                     });
                     
@@ -704,7 +667,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                     
                     // Generate HTML from parsed diff
-                    const html = Diff2Html.html(diffJson, {
+                    const html = Diff2HtmlLib.html(diffJson, {
                         inputFormat: 'json',
                         outputFormat: outputFormat,
                         showFiles: true,
