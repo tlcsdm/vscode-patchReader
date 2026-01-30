@@ -414,7 +414,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         <div class="header">
             <div class="tabs" role="tablist" aria-label="View tabs">
                 <button class="tab active" data-tab="visual" role="tab" aria-selected="true" aria-controls="visual-tab" id="visual-tab-btn">Visual</button>
-                <button class="tab" data-tab="content" role="tab" aria-selected="false" aria-controls="content-tab" id="content-tab-btn">Content</button>
+                <button class="tab" data-tab="content" id="content-tab-btn">Content</button>
             </div>
             <div class="view-toggle" role="group" aria-label="View mode">
                 <button class="view-btn active" data-view="side-by-side" aria-pressed="true" aria-label="Side-by-Side view">Side-by-Side</button>
@@ -450,16 +450,18 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     tab.addEventListener('click', () => {
                         const targetTab = tab.dataset.tab;
                         if (targetTab === 'content') {
+                            // Show brief visual feedback that content tab was clicked
+                            tab.classList.add('active');
                             // Request to open file with VS Code's built-in text editor
                             vscode.postMessage({
                                 type: 'openWithTextEditor'
                             });
-                        } else {
-                            // Visual tab is always active since Content opens in new editor
-                            tabs.forEach(t => {
-                                t.classList.toggle('active', t.dataset.tab === 'visual');
-                                t.setAttribute('aria-selected', t.dataset.tab === 'visual' ? 'true' : 'false');
-                            });
+                            // Reset visual state after a short delay (the file will open in a new editor)
+                            setTimeout(() => {
+                                tabs.forEach(t => {
+                                    t.classList.toggle('active', t.dataset.tab === 'visual');
+                                });
+                            }, 150);
                         }
                     });
                 });
