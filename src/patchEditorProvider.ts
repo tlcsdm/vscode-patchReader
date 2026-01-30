@@ -29,7 +29,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         const errorMessage = error instanceof Error ? error.message : String(error || '');
         const logMessage = errorMessage ? `[${timestamp}] ERROR: ${message} - ${errorMessage}` : `[${timestamp}] ERROR: ${message}`;
         PatchEditorProvider.outputChannel?.appendLine(logMessage);
-        PatchEditorProvider.outputChannel?.show(true);
+        PatchEditorProvider.outputChannel?.show();
     }
 
     /**
@@ -295,10 +295,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         }
 
         /* Content tab syntax highlighting for diff */
-        #content-output .diff-header {
-            color: var(--vscode-textPreformat-foreground, #d4d4d4);
-        }
-
         #content-output .diff-file-header {
             color: var(--vscode-textPreformat-foreground, #d4d4d4);
             font-weight: bold;
@@ -609,11 +605,13 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         if (line.startsWith('@@') && line.includes('@@', 2)) {
                             return '<span class="diff-hunk-header">' + escapedLine + '</span>';
                         }
-                        // File headers
+                        // File headers - must use specific patterns
                         if (line.startsWith('diff --git') || 
-                            line.startsWith('index ') || 
-                            line.startsWith('---') || 
-                            line.startsWith('+++')) {
+                            line.startsWith('index ') ||
+                            /^--- [ab]\\//.test(line) ||
+                            /^\\+\\+\\+ [ab]\\//.test(line) ||
+                            line === '--- /dev/null' ||
+                            line === '+++ /dev/null') {
                             return '<span class="diff-file-header">' + escapedLine + '</span>';
                         }
                         // Deleted lines
@@ -632,11 +630,17 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 }
             }
             
-            // Escape HTML special characters
+            // Escape HTML special characters efficiently
+            const htmlEscapes = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            };
+            
             function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
+                return text.replace(/[&<>"']/g, char => htmlEscapes[char]);
             }
             
             // Apply VS Code theme
