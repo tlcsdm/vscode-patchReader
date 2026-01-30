@@ -72,6 +72,10 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 case 'viewModeChanged':
                     this.currentViewMode = message.viewMode;
                     break;
+                case 'openWithTextEditor':
+                    // Open the file with VS Code's built-in text editor
+                    vscode.commands.executeCommand('vscode.openWith', document.uri, 'default');
+                    break;
             }
         });
 
@@ -125,9 +129,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         diff2htmlJsUri: vscode.Uri
     ): string {
         const nonce = getNonce();
-        
-        // Escape content for safe embedding in JavaScript
-        const escapedContent = escapeForJs(content);
 
         return /* html */`
 <!DOCTYPE html>
@@ -185,7 +186,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             align-items: center;
             padding: 8px 16px;
             background-color: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
+            border-top: 1px solid var(--border-color);
+            order: 1;
         }
 
         .tabs {
@@ -200,7 +202,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             color: var(--tab-inactive-fg);
             cursor: pointer;
             font-size: 13px;
-            border-bottom: 2px solid transparent;
+            border-top: 2px solid transparent;
             transition: all 0.2s ease;
         }
 
@@ -211,7 +213,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         .tab.active {
             background-color: var(--tab-active-bg);
             color: var(--tab-active-fg);
-            border-bottom-color: var(--btn-primary-bg);
+            border-top-color: var(--btn-primary-bg);
         }
 
         .view-toggle {
@@ -253,17 +255,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
 
         .tab-content.active {
             display: block;
-        }
-
-        #raw-content {
-            white-space: pre-wrap;
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: var(--vscode-editor-font-size, 13px);
-            line-height: 1.5;
-            background-color: var(--bg-primary);
-            padding: 8px;
-            overflow: auto;
-            height: 100%;
         }
 
         #diff-output {
@@ -415,22 +406,19 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="tabs" role="tablist" aria-label="View tabs">
-                <button class="tab active" data-tab="visual" role="tab" aria-selected="true" aria-controls="visual-tab" id="visual-tab-btn">Visual Diff</button>
-                <button class="tab" data-tab="raw" role="tab" aria-selected="false" aria-controls="raw-tab" id="raw-tab-btn">Raw Content</button>
-            </div>
-            <div class="view-toggle" role="group" aria-label="View mode">
-                <button class="view-btn active" data-view="side-by-side" aria-pressed="true" aria-label="Side-by-Side view">Side-by-Side</button>
-                <button class="view-btn" data-view="unified" aria-pressed="false" aria-label="Unified view">Unified</button>
-            </div>
-        </div>
         <div class="content">
             <div id="visual-tab" class="tab-content active" role="tabpanel" aria-labelledby="visual-tab-btn">
                 <div id="diff-output"></div>
             </div>
-            <div id="raw-tab" class="tab-content" role="tabpanel" aria-labelledby="raw-tab-btn" hidden>
-                <pre id="raw-content"></pre>
+        </div>
+        <div class="header">
+            <div class="tabs" role="tablist" aria-label="View tabs">
+                <button class="tab active" data-tab="visual" role="tab" aria-selected="true" aria-controls="visual-tab" id="visual-tab-btn">Visual</button>
+                <button class="tab" data-tab="content" role="tab" aria-selected="false" aria-controls="content-tab" id="content-tab-btn">Content</button>
+            </div>
+            <div class="view-toggle" role="group" aria-label="View mode">
+                <button class="view-btn active" data-view="side-by-side" aria-pressed="true" aria-label="Side-by-Side view">Side-by-Side</button>
+                <button class="view-btn" data-view="unified" aria-pressed="false" aria-label="Unified view">Unified</button>
             </div>
         </div>
     </div>
@@ -442,19 +430,16 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             
             // DOM elements
             const diffOutput = document.getElementById('diff-output');
-            const rawContent = document.getElementById('raw-content');
             const tabs = document.querySelectorAll('.tab');
-            const tabContents = document.querySelectorAll('.tab-content');
             const viewBtns = document.querySelectorAll('.view-btn');
             
             // State
-            let currentContent = ${JSON.stringify(escapedContent)};
+            let currentContent = ${JSON.stringify(content)};
             let currentViewMode = 'side-by-side';
             
             // Initialize
             function init() {
                 bindEvents();
-                updateRawContent();
                 renderDiff();
             }
             
@@ -464,7 +449,18 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 tabs.forEach(tab => {
                     tab.addEventListener('click', () => {
                         const targetTab = tab.dataset.tab;
-                        switchTab(targetTab);
+                        if (targetTab === 'content') {
+                            // Request to open file with VS Code's built-in text editor
+                            vscode.postMessage({
+                                type: 'openWithTextEditor'
+                            });
+                        } else {
+                            // Visual tab is always active since Content opens in new editor
+                            tabs.forEach(t => {
+                                t.classList.toggle('active', t.dataset.tab === 'visual');
+                                t.setAttribute('aria-selected', t.dataset.tab === 'visual' ? 'true' : 'false');
+                            });
+                        }
                     });
                 });
                 
@@ -482,7 +478,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     switch (message.type) {
                         case 'update':
                             currentContent = message.content;
-                            updateRawContent();
                             renderDiff();
                             break;
                         case 'themeChanged':
@@ -492,25 +487,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         case 'setViewMode':
                             setViewMode(message.viewMode, false);
                             break;
-                    }
-                });
-            }
-            
-            // Switch tab
-            function switchTab(targetTab) {
-                tabs.forEach(tab => {
-                    const isActive = tab.dataset.tab === targetTab;
-                    tab.classList.toggle('active', isActive);
-                    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
-                });
-                tabContents.forEach(content => {
-                    const tabId = content.id.replace('-tab', '');
-                    const isActive = tabId === targetTab;
-                    content.classList.toggle('active', isActive);
-                    if (isActive) {
-                        content.removeAttribute('hidden');
-                    } else {
-                        content.setAttribute('hidden', '');
                     }
                 });
             }
@@ -553,11 +529,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 }
             }
             
-            // Update raw content display
-            function updateRawContent() {
-                rawContent.textContent = currentContent;
-            }
-            
             // Render diff using diff2html
             function renderDiff() {
                 if (!currentContent || !currentContent.trim()) {
@@ -589,13 +560,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 }
             }
             
-            // Escape HTML for safe display
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-            
             // Initialize
             init();
         })();
@@ -616,24 +580,4 @@ function getNonce(): string {
         text += possible.charAt(Math.floor(Math.random() * possible.length));
     }
     return text;
-}
-
-/**
- * Escape content for safe embedding in JavaScript
- */
-function escapeForJs(content: string): string {
-    return content
-        .replace(/\\/g, '\\\\')
-        .replace(/'/g, "\\'")
-        .replace(/"/g, '\\"')
-        .replace(/\n/g, '\\n')
-        .replace(/\r/g, '\\r')
-        .replace(/\t/g, '\\t')
-        .replace(/\f/g, '\\f')
-        .replace(/\v/g, '\\v')
-        .replace(/\0/g, '\\0')
-        .replace(/</g, '\\x3c')
-        .replace(/>/g, '\\x3e')
-        .replace(/\u2028/g, '\\u2028')
-        .replace(/\u2029/g, '\\u2029');
 }
