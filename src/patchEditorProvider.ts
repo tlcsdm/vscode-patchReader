@@ -585,9 +585,10 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             left: 0;
             z-index: 1;
             border-right: none;
+            padding-right: 0;
         }
 
-        /* Fix: Reduce padding to remove gap between line numbers and content */
+        /* Fix: Adjust content padding to match line number width */
         .d2h-code-line {
             padding-left: 7.5em;
             padding-right: 0;
