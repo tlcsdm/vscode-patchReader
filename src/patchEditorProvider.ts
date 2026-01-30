@@ -585,20 +585,29 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             left: 0;
             z-index: 1;
             border-right: none;
-            padding-right: 0;
+            padding-right: 0.1em;
+            padding-left: 0.2em;
         }
 
-        /* Fix: Adjust content padding to match line number width */
+        /* Fix: Adjust content padding to match line number width exactly */
+        .d2h-code-linenumber {
+            width: 6em;
+        }
+
+        .d2h-code-side-linenumber {
+            width: 2.8em;
+        }
+
         .d2h-code-line {
-            padding-left: 7.5em;
+            padding-left: 6em;
             padding-right: 0;
-            width: calc(100% - 7.5em);
+            width: calc(100% - 6em);
         }
 
         .d2h-code-side-line {
-            padding-left: 4em;
+            padding-left: 2.8em;
             padding-right: 0;
-            width: calc(100% - 4em);
+            width: calc(100% - 2.8em);
         }
 
         /* Fix: Ensure header tabs appear above sticky line numbers */
