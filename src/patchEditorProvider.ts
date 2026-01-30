@@ -75,17 +75,16 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.webview.options = {
             enableScripts: true,
             localResourceRoots: [
-                vscode.Uri.joinPath(this.context.extensionUri, 'media'),
-                vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', 'diff2html', 'bundles')
+                vscode.Uri.joinPath(this.context.extensionUri, 'media')
             ]
         };
 
         // Get URIs for diff2html resources
         const diff2htmlCssUri = webviewPanel.webview.asWebviewUri(
-            vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', 'diff2html', 'bundles', 'css', 'diff2html.min.css')
+            vscode.Uri.joinPath(this.context.extensionUri, 'media', 'diff2html', 'css', 'diff2html.min.css')
         );
         const diff2htmlJsUri = webviewPanel.webview.asWebviewUri(
-            vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', 'diff2html', 'bundles', 'js', 'diff2html.min.js')
+            vscode.Uri.joinPath(this.context.extensionUri, 'media', 'diff2html', 'js', 'diff2html.min.js')
         );
 
         // Set initial HTML content
@@ -308,8 +307,50 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             border: none;
             white-space: pre;
             tab-size: 4;
-            resize: none;
-            outline: none;
+        }
+
+        /* Diff syntax highlighting - matching VS Code built-in editor */
+        .diff-line-header {
+            color: var(--vscode-diffEditor-unchangedRegionForeground, #608b4e);
+        }
+        .diff-line-add {
+            color: var(--vscode-gitDecoration-addedResourceForeground, #89d185);
+            background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+        }
+        .diff-line-delete {
+            color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+            background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+        }
+        .diff-line-meta {
+            color: var(--vscode-symbolIcon-functionForeground, #569cd6);
+        }
+        .diff-line-range {
+            color: var(--vscode-editorLineNumber-activeForeground, #c586c0);
+        }
+        .diff-line-index {
+            color: var(--vscode-textPreformat-foreground, #9cdcfe);
+        }
+
+        /* Light theme overrides */
+        body.vscode-light .diff-line-header {
+            color: #22863a;
+        }
+        body.vscode-light .diff-line-add {
+            color: #22863a;
+            background-color: rgba(46, 160, 67, 0.15);
+        }
+        body.vscode-light .diff-line-delete {
+            color: #cb2431;
+            background-color: rgba(248, 81, 73, 0.15);
+        }
+        body.vscode-light .diff-line-meta {
+            color: #0550ae;
+        }
+        body.vscode-light .diff-line-range {
+            color: #6f42c1;
+        }
+        body.vscode-light .diff-line-index {
+            color: #953800;
         }
 
         .placeholder {
@@ -461,7 +502,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 <div id="diff-output"></div>
             </div>
             <div id="content-tab" class="tab-content" role="tabpanel" aria-labelledby="content-tab-btn">
-                <textarea id="content-output" spellcheck="false"></textarea>
+                <pre id="content-output"></pre>
             </div>
         </div>
         <div class="header">
@@ -516,29 +557,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         setViewMode(viewMode);
                     });
                 });
-                
-                // Handle content editing with debounce
-                if (contentOutput) {
-                    let debounceTimer = null;
-                    contentOutput.addEventListener('input', () => {
-                        const newContent = contentOutput.value;
-                        if (newContent !== currentContent) {
-                            currentContent = newContent;
-                            vscode.postMessage({
-                                type: 'edit',
-                                content: newContent
-                            });
-                            // Debounce renderDiff to avoid performance issues with large diffs
-                            if (debounceTimer) {
-                                clearTimeout(debounceTimer);
-                            }
-                            debounceTimer = setTimeout(() => {
-                                renderDiff();
-                                debounceTimer = null;
-                            }, 300);
-                        }
-                    });
-                }
                 
                 // Handle messages from extension
                 window.addEventListener('message', event => {
@@ -597,8 +615,54 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             // Update content tab with raw content
             function updateContentTab() {
                 if (contentOutput) {
-                    contentOutput.value = currentContent || '';
+                    contentOutput.innerHTML = highlightDiffContent(currentContent || '');
                 }
+            }
+            
+            // Highlight diff content with syntax coloring
+            function highlightDiffContent(content) {
+                if (!content) return '';
+                
+                const lines = content.split('\\n');
+                const highlightedLines = lines.map(line => {
+                    const escapedLine = escapeHtml(line);
+                    
+                    // Diff header lines (diff --git, ---, +++)
+                    if (line.startsWith('diff --git') || line.startsWith('diff -')) {
+                        return '<span class="diff-line-header">' + escapedLine + '</span>';
+                    }
+                    // File path lines
+                    if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+                        return '<span class="diff-line-meta">' + escapedLine + '</span>';
+                    }
+                    // Index line
+                    if (line.startsWith('index ')) {
+                        return '<span class="diff-line-index">' + escapedLine + '</span>';
+                    }
+                    // Hunk header (@@ ... @@)
+                    if (line.startsWith('@@') && line.includes('@@')) {
+                        return '<span class="diff-line-range">' + escapedLine + '</span>';
+                    }
+                    // Added lines
+                    if (line.startsWith('+')) {
+                        return '<span class="diff-line-add">' + escapedLine + '</span>';
+                    }
+                    // Deleted lines
+                    if (line.startsWith('-')) {
+                        return '<span class="diff-line-delete">' + escapedLine + '</span>';
+                    }
+                    // Context/unchanged lines
+                    return escapedLine;
+                });
+                
+                return highlightedLines.join('\\n');
+            }
+            
+            // Escape HTML special characters
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
             }
             
             // Apply VS Code theme

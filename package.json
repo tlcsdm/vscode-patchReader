@@ -73,8 +73,9 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run compile && npm run copy-assets",
     "compile": "tsc -p ./",
+    "copy-assets": "node -e \"const fs=require('fs');const path=require('path');const srcJs='node_modules/diff2html/bundles/js/diff2html.min.js';const srcCss='node_modules/diff2html/bundles/css/diff2html.min.css';const destJs='media/diff2html/js';const destCss='media/diff2html/css';fs.mkdirSync(destJs,{recursive:true});fs.mkdirSync(destCss,{recursive:true});fs.copyFileSync(srcJs,path.join(destJs,'diff2html.min.js'));fs.copyFileSync(srcCss,path.join(destCss,'diff2html.min.css'));\"",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
