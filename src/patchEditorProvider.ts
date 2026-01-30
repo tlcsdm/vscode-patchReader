@@ -429,7 +429,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         <div class="header">
             <div class="tabs" role="tablist" aria-label="View tabs">
                 <button class="tab active" data-tab="visual" role="tab" aria-selected="true" aria-controls="visual-tab" id="visual-tab-btn">Visual</button>
-                <button class="tab" data-tab="content" id="content-tab-btn">Content</button>
+                <button class="tab" data-tab="content" role="tab" aria-selected="false" aria-controls="content-tab" id="content-tab-btn">Content</button>
             </div>
             <div class="view-toggle" role="group" aria-label="View mode">
                 <button class="view-btn active" data-view="side-by-side" aria-pressed="true" aria-label="Side-by-Side view">Side-by-Side</button>
@@ -453,7 +453,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             // State
             let currentContent = ${JSON.stringify(content)};
             let currentViewMode = 'side-by-side';
-            let currentTab = 'visual';
             
             // Initialize
             function init() {
@@ -520,8 +519,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             
             // Switch between tabs
             function switchTab(targetTab) {
-                currentTab = targetTab;
-                
                 // Update tab buttons
                 tabs.forEach(tab => {
                     const isActive = tab.dataset.tab === targetTab;
@@ -578,9 +575,16 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         inputFormat: 'diff'
                     });
                     
-                    // Check if parsing produced valid results
+                    // Check if parsing produced valid results with actual changes
                     if (!diffJson || diffJson.length === 0) {
-                        diffOutput.innerHTML = '<div class="placeholder">Unable to render diff. Please check if the content is a valid diff/patch format.</div>';
+                        diffOutput.innerHTML = '<div class="placeholder">Unable to parse diff content. Please check if the content is a valid diff/patch format.</div>';
+                        return;
+                    }
+                    
+                    // Verify parsed content has meaningful data (at least one file with blocks)
+                    const hasValidBlocks = diffJson.some(file => file.blocks && file.blocks.length > 0);
+                    if (!hasValidBlocks) {
+                        diffOutput.innerHTML = '<div class="placeholder">No valid diff blocks found. The content may not be in the expected diff/patch format.</div>';
                         return;
                     }
                     
@@ -599,16 +603,16 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         stickyFileHeaders: true
                     });
                     
-                    // Check if HTML output is meaningful
-                    if (!html || html.trim() === '' || !html.includes('d2h-')) {
-                        diffOutput.innerHTML = '<div class="placeholder">Unable to render diff. Please check if the content is a valid diff/patch format.</div>';
+                    // Check if HTML output is empty
+                    if (!html || html.trim() === '') {
+                        diffOutput.innerHTML = '<div class="placeholder">Failed to generate diff view. The content could not be rendered.</div>';
                         return;
                     }
                     
                     diffOutput.innerHTML = html;
                 } catch (error) {
                     console.error('Failed to render diff:', error);
-                    diffOutput.innerHTML = '<div class="placeholder">Unable to render diff. Please check if the content is a valid diff/patch format.</div>';
+                    diffOutput.innerHTML = '<div class="placeholder">An error occurred while rendering the diff. Please check if the content is a valid diff/patch format.</div>';
                 }
             }
             
