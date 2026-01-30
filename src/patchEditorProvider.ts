@@ -48,19 +48,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     /**
-     * Apply edit from webview to the document
-     */
-    private async applyEdit(document: vscode.TextDocument, newContent: string): Promise<void> {
-        const edit = new vscode.WorkspaceEdit();
-        edit.replace(
-            document.uri,
-            new vscode.Range(0, 0, document.lineCount, 0),
-            newContent
-        );
-        await vscode.workspace.applyEdit(edit);
-    }
-
-    /**
      * Called when a custom editor is opened
      */
     public async resolveCustomTextEditor(
@@ -96,16 +83,13 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         );
 
         // Handle messages from the webview
-        webviewPanel.webview.onDidReceiveMessage(async message => {
+        webviewPanel.webview.onDidReceiveMessage(message => {
             switch (message.type) {
                 case 'viewModeChanged':
                     this.currentViewMode = message.viewMode;
                     break;
                 case 'error':
                     this.logError(message.message, message.error);
-                    break;
-                case 'edit':
-                    await this.applyEdit(document, message.content);
                     break;
             }
         });

@@ -2,12 +2,14 @@
 .vscode-test/**
 .github/**
 src/**
+scripts/**
 .gitignore
 .eslintrc.json
 eslint.config.mjs
 tsconfig.json
 *.vsix
 **/*.ts
+**/*.map
 .editorconfig
 *.md
 !README.md
