@@ -66,7 +66,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             ]
         };
 
-        // Get URIs for diff2html resources
+        // Get URIs for diff2html resources from media folder
         const diff2htmlCssUri = webviewPanel.webview.asWebviewUri(
             vscode.Uri.joinPath(this.context.extensionUri, 'media', 'diff2html', 'css', 'diff2html.min.css')
         );
