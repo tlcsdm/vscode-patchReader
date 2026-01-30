@@ -72,10 +72,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 case 'viewModeChanged':
                     this.currentViewMode = message.viewMode;
                     break;
-                case 'openWithTextEditor':
-                    // Open the file with VS Code's built-in text editor
-                    vscode.commands.executeCommand('vscode.openWith', document.uri, 'default');
-                    break;
             }
         });
 
@@ -262,6 +258,22 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             height: 100%;
         }
 
+        #content-output {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            padding: 8px 12px;
+            margin: 0;
+            font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+            font-size: var(--vscode-editor-font-size, 14px);
+            line-height: var(--vscode-editor-line-height, 1.5);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            border: none;
+            white-space: pre;
+            tab-size: 4;
+        }
+
         .placeholder {
             display: flex;
             align-items: center;
@@ -410,11 +422,14 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             <div id="visual-tab" class="tab-content active" role="tabpanel" aria-labelledby="visual-tab-btn">
                 <div id="diff-output"></div>
             </div>
+            <div id="content-tab" class="tab-content" role="tabpanel" aria-labelledby="content-tab-btn">
+                <pre id="content-output"></pre>
+            </div>
         </div>
         <div class="header">
             <div class="tabs" role="tablist" aria-label="View tabs">
                 <button class="tab active" data-tab="visual" role="tab" aria-selected="true" aria-controls="visual-tab" id="visual-tab-btn">Visual</button>
-                <button class="tab" data-tab="content" id="content-tab-btn">Content</button>
+                <button class="tab" data-tab="content" role="tab" aria-selected="false" aria-controls="content-tab" id="content-tab-btn">Content</button>
             </div>
             <div class="view-toggle" role="group" aria-label="View mode">
                 <button class="view-btn active" data-view="side-by-side" aria-pressed="true" aria-label="Side-by-Side view">Side-by-Side</button>
@@ -430,6 +445,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             
             // DOM elements
             const diffOutput = document.getElementById('diff-output');
+            const contentOutput = document.getElementById('content-output');
+            const tabContents = document.querySelectorAll('.tab-content');
             const tabs = document.querySelectorAll('.tab');
             const viewBtns = document.querySelectorAll('.view-btn');
             
@@ -441,6 +458,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             function init() {
                 bindEvents();
                 renderDiff();
+                updateContentTab();
             }
             
             // Bind events
@@ -449,20 +467,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 tabs.forEach(tab => {
                     tab.addEventListener('click', () => {
                         const targetTab = tab.dataset.tab;
-                        if (targetTab === 'content') {
-                            // Show brief visual feedback that content tab was clicked
-                            tab.classList.add('active');
-                            // Request to open file with VS Code's built-in text editor
-                            vscode.postMessage({
-                                type: 'openWithTextEditor'
-                            });
-                            // Reset visual state after a short delay (the file will open in a new editor)
-                            setTimeout(() => {
-                                tabs.forEach(t => {
-                                    t.classList.toggle('active', t.dataset.tab === 'visual');
-                                });
-                            }, 150);
-                        }
+                        switchTab(targetTab);
                     });
                 });
                 
@@ -481,6 +486,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         case 'update':
                             currentContent = message.content;
                             renderDiff();
+                            updateContentTab();
                             break;
                         case 'themeChanged':
                             applyTheme(message.kind);
@@ -508,6 +514,29 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         type: 'viewModeChanged',
                         viewMode: viewMode
                     });
+                }
+            }
+            
+            // Switch between tabs
+            function switchTab(targetTab) {
+                // Update tab buttons
+                tabs.forEach(tab => {
+                    const isActive = tab.dataset.tab === targetTab;
+                    tab.classList.toggle('active', isActive);
+                    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                });
+                
+                // Update tab content visibility
+                tabContents.forEach(content => {
+                    const isActive = content.id === targetTab + '-tab';
+                    content.classList.toggle('active', isActive);
+                });
+            }
+            
+            // Update content tab with raw content
+            function updateContentTab() {
+                if (contentOutput) {
+                    contentOutput.textContent = currentContent || '';
                 }
             }
             
@@ -541,8 +570,27 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 try {
                     const outputFormat = currentViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line';
                     
-                    const html = Diff2Html.html(currentContent, {
-                        inputFormat: 'diff',
+                    // First, try to parse the diff content
+                    const diffJson = Diff2Html.parse(currentContent, {
+                        inputFormat: 'diff'
+                    });
+                    
+                    // Check if parsing produced valid results with actual changes
+                    if (!diffJson || diffJson.length === 0) {
+                        diffOutput.innerHTML = '<div class="placeholder">Unable to parse diff content. Please check if the content is a valid diff/patch format.</div>';
+                        return;
+                    }
+                    
+                    // Verify parsed content has meaningful data (at least one file with blocks)
+                    const hasValidBlocks = diffJson.some(file => file.blocks && file.blocks.length > 0);
+                    if (!hasValidBlocks) {
+                        diffOutput.innerHTML = '<div class="placeholder">No valid diff blocks found. The content may not be in the expected diff/patch format.</div>';
+                        return;
+                    }
+                    
+                    // Generate HTML from parsed diff
+                    const html = Diff2Html.html(diffJson, {
+                        inputFormat: 'json',
                         outputFormat: outputFormat,
                         showFiles: true,
                         matching: 'lines',
@@ -555,10 +603,16 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         stickyFileHeaders: true
                     });
                     
+                    // Check if HTML output is empty
+                    if (!html || html.trim() === '') {
+                        diffOutput.innerHTML = '<div class="placeholder">Failed to generate diff view. The content could not be rendered.</div>';
+                        return;
+                    }
+                    
                     diffOutput.innerHTML = html;
                 } catch (error) {
                     console.error('Failed to render diff:', error);
-                    diffOutput.innerHTML = '<div class="placeholder">Unable to render diff. Please check if the content is a valid diff/patch format.</div>';
+                    diffOutput.innerHTML = '<div class="placeholder">An error occurred while rendering the diff. Please check if the content is a valid diff/patch format.</div>';
                 }
             }
             
