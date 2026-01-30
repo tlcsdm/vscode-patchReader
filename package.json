@@ -1,0 +1,99 @@
+{
+  "name": "tlcsdm-patch-reader",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "1.0.0",
+  "publisher": "unknowIfGuestInDream",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tlcsdm/vscode-patchReader"
+  },
+  "bugs": {
+    "url": "https://github.com/tlcsdm/vscode-patchReader/issues"
+  },
+  "homepage": "https://github.com/tlcsdm/vscode-patchReader#readme",
+  "engines": {
+    "vscode": "^1.108.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "patch",
+    "diff",
+    "diff2html",
+    "visualization",
+    "git",
+    "code review"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "tlcsdm.patchReader.editor",
+        "displayName": "%editor.displayName%",
+        "selector": [
+          {
+            "filenamePattern": "*.patch"
+          },
+          {
+            "filenamePattern": "*.diff"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "tlcsdm.patchReader.toggleView",
+        "title": "%command.toggleView.title%",
+        "category": "%command.toggleView.category%"
+      }
+    ],
+    "configuration": {
+      "title": "%config.title%",
+      "properties": {
+        "tlcsdm.patchReader.defaultViewMode": {
+          "type": "string",
+          "default": "side-by-side",
+          "enum": [
+            "side-by-side",
+            "unified"
+          ],
+          "enumDescriptions": [
+            "%config.defaultViewMode.sideBySide%",
+            "%config.defaultViewMode.unified%"
+          ],
+          "description": "%config.defaultViewMode.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test --config ./.vscode-test.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.108.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.2",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.54.0"
+  },
+  "dependencies": {
+    "diff2html": "^3.4.48"
+  },
+  "license": "MIT"
+}

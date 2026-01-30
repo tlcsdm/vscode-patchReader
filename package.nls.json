@@ -1,0 +1,20 @@
+{
+    "displayName": "Tlcsdm Patch Reader",
+    "description": "Visualize patch and diff files with diff2html support, featuring side-by-side and unified views with VS Code theme integration",
+    "category.visualization": "Visualization",
+    "category.other": "Other",
+    "editor.displayName": "Patch Reader",
+    "command.toggleView.title": "Toggle View Mode",
+    "command.toggleView.category": "Patch Reader",
+    "config.title": "Patch Reader",
+    "config.defaultViewMode.description": "Default view mode for diff visualization",
+    "config.defaultViewMode.sideBySide": "Side-by-side diff view",
+    "config.defaultViewMode.unified": "Unified diff view",
+    "webview.visualDiff": "Visual Diff",
+    "webview.rawContent": "Raw Content",
+    "webview.sideBySide": "Side-by-Side",
+    "webview.unified": "Unified",
+    "webview.noContent": "No diff content to display",
+    "webview.renderError": "Unable to render diff. Please check if the content is a valid diff/patch format.",
+    "message.openFileFirst": "Please open a patch or diff file to toggle view mode"
+}
