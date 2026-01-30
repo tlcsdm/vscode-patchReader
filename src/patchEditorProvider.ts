@@ -578,11 +578,13 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         }
 
         /* Fix: Make line numbers sticky on the left when scrolling horizontally */
+        /* Fix: Remove the gap between line numbers and content */
         .d2h-code-linenumber,
         .d2h-code-side-linenumber {
             position: sticky;
             left: 0;
             z-index: 1;
+            border-right: none;
         }
 
         /* Fix: Ensure header tabs appear above sticky line numbers */
