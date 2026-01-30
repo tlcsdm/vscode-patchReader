@@ -5,6 +5,7 @@ node_modules/
 out/
 dist/
 *.vsix
+media/diff2html/
 
 # IDE
 .vscode-test/

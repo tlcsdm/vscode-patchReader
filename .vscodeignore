@@ -2,7 +2,7 @@
 .vscode-test/**
 .github/**
 src/**
-node_modules/**
+scripts/**
 .gitignore
 .eslintrc.json
 eslint.config.mjs
@@ -13,3 +13,4 @@ tsconfig.json
 .editorconfig
 *.md
 !README.md
+node_modules/**
