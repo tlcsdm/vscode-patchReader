@@ -1,0 +1,20 @@
+{
+    "displayName": "Tlcsdm Patch 阅读器",
+    "description": "使用 diff2html 可视化 patch 和 diff 文件，支持并排对比和统一视图，并与 VS Code 主题集成",
+    "category.visualization": "可视化",
+    "category.other": "其他",
+    "editor.displayName": "Patch 阅读器",
+    "command.toggleView.title": "切换视图模式",
+    "command.toggleView.category": "Patch 阅读器",
+    "config.title": "Patch 阅读器",
+    "config.defaultViewMode.description": "diff 可视化的默认视图模式",
+    "config.defaultViewMode.sideBySide": "并排对比视图",
+    "config.defaultViewMode.unified": "统一视图",
+    "webview.visualDiff": "可视化 Diff",
+    "webview.rawContent": "原始内容",
+    "webview.sideBySide": "并排对比",
+    "webview.unified": "统一视图",
+    "webview.noContent": "没有可显示的 diff 内容",
+    "webview.renderError": "无法渲染 diff。请检查内容是否为有效的 diff/patch 格式。",
+    "message.openFileFirst": "请先打开 patch 或 diff 文件以切换视图模式"
+}

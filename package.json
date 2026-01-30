@@ -1,7 +1,7 @@
 {
   "name": "tlcsdm-patch-reader",
-  "displayName": "Tlcsdm Patch Reader",
-  "description": "Visualize patch and diff files with diff2html support, featuring side-by-side and unified views with VS Code theme integration",
+  "displayName": "%displayName%",
+  "description": "%description%",
   "version": "1.0.0",
   "publisher": "unknowIfGuestInDream",
   "icon": "images/icon.png",
@@ -34,7 +34,7 @@
     "customEditors": [
       {
         "viewType": "tlcsdm.patchReader.editor",
-        "displayName": "Patch Reader",
+        "displayName": "%editor.displayName%",
         "selector": [
           {
             "filenamePattern": "*.patch"
@@ -49,12 +49,12 @@
     "commands": [
       {
         "command": "tlcsdm.patchReader.toggleView",
-        "title": "Toggle View Mode",
-        "category": "Patch Reader"
+        "title": "%command.toggleView.title%",
+        "category": "%command.toggleView.category%"
       }
     ],
     "configuration": {
-      "title": "Patch Reader",
+      "title": "%config.title%",
       "properties": {
         "tlcsdm.patchReader.defaultViewMode": {
           "type": "string",
@@ -64,10 +64,10 @@
             "unified"
           ],
           "enumDescriptions": [
-            "Side-by-side diff view",
-            "Unified diff view"
+            "%config.defaultViewMode.sideBySide%",
+            "%config.defaultViewMode.unified%"
           ],
-          "description": "Default view mode for diff visualization"
+          "description": "%config.defaultViewMode.description%"
         }
       }
     }

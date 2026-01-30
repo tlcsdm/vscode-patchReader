@@ -1,0 +1,20 @@
+{
+    "displayName": "Tlcsdm Patch リーダー",
+    "description": "diff2html を使用して patch および diff ファイルを視覚化し、サイドバイサイドと統合ビューをサポートし、VS Code テーマと統合",
+    "category.visualization": "視覚化",
+    "category.other": "その他",
+    "editor.displayName": "Patch リーダー",
+    "command.toggleView.title": "表示モードを切り替え",
+    "command.toggleView.category": "Patch リーダー",
+    "config.title": "Patch リーダー",
+    "config.defaultViewMode.description": "diff 視覚化のデフォルト表示モード",
+    "config.defaultViewMode.sideBySide": "サイドバイサイド diff ビュー",
+    "config.defaultViewMode.unified": "統合 diff ビュー",
+    "webview.visualDiff": "ビジュアル Diff",
+    "webview.rawContent": "生のコンテンツ",
+    "webview.sideBySide": "サイドバイサイド",
+    "webview.unified": "統合ビュー",
+    "webview.noContent": "表示する diff コンテンツがありません",
+    "webview.renderError": "diff をレンダリングできません。コンテンツが有効な diff/patch 形式であることを確認してください。",
+    "message.openFileFirst": "表示モードを切り替えるには、まず patch または diff ファイルを開いてください"
+}

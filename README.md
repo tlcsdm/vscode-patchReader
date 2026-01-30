@@ -10,6 +10,7 @@ A VS Code extension for visualizing patch and diff files using diff2html.
 - 🎨 Theme integration - automatically follows VS Code's color theme (Light/Dark)
 - ✏️ Auto-render when file content changes
 - 🔧 Configurable default view mode
+- 🌐 Internationalization support (English, Chinese, Japanese)
 
 ## Installation
 
@@ -20,13 +21,17 @@ A VS Code extension for visualizing patch and diff files using diff2html.
 3. Search for "Tlcsdm Patch Reader"
 4. Click Install
 
-### From VSIX file
+### From VSIX File
 
 1. Download the latest `.vsix` file from [Releases](https://github.com/tlcsdm/vscode-patchReader/releases)
 2. Open VS Code
 3. Go to Extensions (Ctrl+Shift+X)
 4. Click the `...` menu and select "Install from VSIX..."
 5. Select the downloaded `.vsix` file
+
+### From Jenkins
+
+Download from [Jenkins](https://jenkins.tlcsdm.com/job/vscode-plugin/job/vscode-patchReader/)
 
 ## Usage
 
@@ -45,14 +50,6 @@ A VS Code extension for visualizing patch and diff files using diff2html.
 |---------|-------------|---------|
 | `tlcsdm.patchReader.defaultViewMode` | Default view mode for diff visualization | `side-by-side` |
 
-## Screenshots
-
-### Side-by-Side View (Light Theme)
-![Side-by-Side Light](images/side-by-side-light.png)
-
-### Unified View (Dark Theme)
-![Unified Dark](images/unified-dark.png)
-
 ## Development
 
 ### Prerequisites
@@ -60,13 +57,9 @@ A VS Code extension for visualizing patch and diff files using diff2html.
 - Node.js 22.x or later
 - npm
 
-### Setup
+### Build
 
 ```bash
-# Clone the repository
-git clone https://github.com/tlcsdm/vscode-patchReader.git
-cd vscode-patchReader
-
 # Install dependencies
 npm install
 
@@ -79,25 +72,11 @@ npm run watch
 # Run tests
 npm run test
 
+# Lint
+npm run lint
+
 # Package extension
 npx @vscode/vsce package
-```
-
-### Project Structure
-
-```
-vscode-patchReader/
-├── .github/              # GitHub configuration (workflows, dependabot, etc.)
-├── .vscode/              # VS Code development configuration
-├── images/               # Extension icon and screenshots
-├── media/                # Webview assets (CSS, JS)
-├── src/
-│   ├── extension.ts      # Extension entry point
-│   ├── patchEditorProvider.ts  # Custom editor provider
-│   └── test/             # Test files
-├── package.json          # Extension manifest
-├── tsconfig.json         # TypeScript configuration
-└── README.md
 ```
 
 ## License
