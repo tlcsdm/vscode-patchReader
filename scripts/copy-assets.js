@@ -25,7 +25,8 @@ if (!fs.existsSync(sourceDir)) {
 fs.mkdirSync(path.join(targetDir, 'css'), { recursive: true });
 fs.mkdirSync(path.join(targetDir, 'js'), { recursive: true });
 
-// Copy files
+// Copy files and track failures
+let hasErrors = false;
 for (const file of filesToCopy) {
     const sourcePath = path.join(sourceDir, file.from);
     const targetPath = path.join(targetDir, file.to);
@@ -34,8 +35,14 @@ for (const file of filesToCopy) {
         fs.copyFileSync(sourcePath, targetPath);
         console.log(`Copied: ${file.from}`);
     } else {
-        console.error(`Warning: Source file not found: ${sourcePath}`);
+        console.error(`Error: Required file not found: ${sourcePath}`);
+        hasErrors = true;
     }
+}
+
+if (hasErrors) {
+    console.error('Asset copy failed due to missing files.');
+    process.exit(1);
 }
 
 console.log('Asset copy complete.');
