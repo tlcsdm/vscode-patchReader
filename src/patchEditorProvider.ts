@@ -94,11 +94,11 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 case 'contentChanged': {
                     // Apply edits from the webview to the document
                     const edit = new vscode.WorkspaceEdit();
-                    edit.replace(
-                        document.uri,
-                        new vscode.Range(0, 0, document.lineCount, 0),
-                        message.content
+                    const fullRange = new vscode.Range(
+                        document.positionAt(0),
+                        document.positionAt(document.getText().length)
                     );
+                    edit.replace(document.uri, fullRange, message.content);
                     await vscode.workspace.applyEdit(edit);
                     break;
                 }
@@ -549,6 +549,32 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         body.vscode-light .d2h-ins .d2h-code-line-prefix {
             color: #1a7f37;
         }
+
+        /* Viewed checkbox styles */
+        .d2h-viewed-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+            padding-right: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .d2h-viewed-checkbox input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .d2h-file-wrapper.viewed {
+            opacity: 0.5;
+        }
+
+        .d2h-file-name-wrapper {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -588,6 +614,20 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             // State
             let currentContent = ${JSON.stringify(content)};
             let currentViewMode = 'side-by-side';
+            let renderDebounceTimer = null;
+            
+            // Debounce helper
+            function debounce(fn, delay) {
+                return function(...args) {
+                    if (renderDebounceTimer) {
+                        clearTimeout(renderDebounceTimer);
+                    }
+                    renderDebounceTimer = setTimeout(() => fn.apply(this, args), delay);
+                };
+            }
+            
+            // Debounced render for content changes
+            const debouncedRenderDiff = debounce(renderDiff, 300);
             
             // Initialize
             function init() {
@@ -623,7 +663,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                             type: 'contentChanged',
                             content: newContent
                         });
-                        renderDiff();
+                        debouncedRenderDiff();
                     }
                 });
                 
@@ -710,27 +750,33 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             
             // Setup synchronized horizontal scrolling for side-by-side view
             function setupSynchronizedScroll() {
-                const sideBySideTables = diffOutput.querySelectorAll('.d2h-file-side-diff');
-                if (sideBySideTables.length < 2) return;
+                // Find all file wrappers with side-by-side diff
+                const fileWrappers = diffOutput.querySelectorAll('.d2h-file-wrapper');
                 
-                let isScrolling = false;
-                
-                sideBySideTables.forEach((table, index) => {
-                    table.addEventListener('scroll', function() {
-                        if (isScrolling) return;
-                        isScrolling = true;
+                fileWrappers.forEach(wrapper => {
+                    const sidePanels = wrapper.querySelectorAll('.d2h-file-side-diff');
+                    if (sidePanels.length !== 2) return;
+                    
+                    const leftPanel = sidePanels[0];
+                    const rightPanel = sidePanels[1];
+                    let scrollSource = null;
+                    
+                    function syncScroll(source, target) {
+                        if (scrollSource && scrollSource !== source) return;
+                        scrollSource = source;
                         
-                        const scrollLeft = this.scrollLeft;
-                        sideBySideTables.forEach((otherTable, otherIndex) => {
-                            if (otherIndex !== index) {
-                                otherTable.scrollLeft = scrollLeft;
-                            }
+                        requestAnimationFrame(() => {
+                            target.scrollLeft = source.scrollLeft;
+                            scrollSource = null;
                         });
-                        
-                        // Reset the flag after a short delay
-                        setTimeout(() => {
-                            isScrolling = false;
-                        }, 10);
+                    }
+                    
+                    leftPanel.addEventListener('scroll', function() {
+                        syncScroll(this, rightPanel);
+                    });
+                    
+                    rightPanel.addEventListener('scroll', function() {
+                        syncScroll(this, leftPanel);
                     });
                 });
             }
@@ -745,22 +791,22 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     // Check if checkbox already exists
                     if (header.querySelector('.d2h-viewed-checkbox')) return;
                     
+                    // Get file name for accessibility
+                    const fileNameEl = header.querySelector('.d2h-file-name');
+                    const fileName = fileNameEl ? fileNameEl.textContent : 'File ' + (index + 1);
+                    const checkboxId = 'd2h-viewed-' + index;
+                    
                     // Create viewed checkbox container
                     const checkboxContainer = document.createElement('label');
                     checkboxContainer.className = 'd2h-viewed-checkbox';
-                    checkboxContainer.style.cssText = 'display: flex; align-items: center; gap: 4px; margin-left: auto; padding-right: 8px; cursor: pointer; font-size: 12px; color: var(--text-muted);';
+                    checkboxContainer.setAttribute('for', checkboxId);
                     
                     const checkbox = document.createElement('input');
                     checkbox.type = 'checkbox';
-                    checkbox.style.cssText = 'cursor: pointer;';
+                    checkbox.id = checkboxId;
+                    checkbox.setAttribute('aria-label', 'Mark ' + fileName + ' as viewed');
                     checkbox.addEventListener('change', function() {
-                        if (this.checked) {
-                            wrapper.style.opacity = '0.5';
-                            wrapper.dataset.viewed = 'true';
-                        } else {
-                            wrapper.style.opacity = '1';
-                            wrapper.dataset.viewed = 'false';
-                        }
+                        wrapper.classList.toggle('viewed', this.checked);
                     });
                     
                     const labelText = document.createElement('span');
@@ -772,9 +818,6 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     // Insert checkbox into header
                     const fileNameWrapper = header.querySelector('.d2h-file-name-wrapper');
                     if (fileNameWrapper) {
-                        fileNameWrapper.style.display = 'flex';
-                        fileNameWrapper.style.alignItems = 'center';
-                        fileNameWrapper.style.width = '100%';
                         fileNameWrapper.appendChild(checkboxContainer);
                     }
                 });
@@ -845,8 +888,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         fileListToggle: true,
                         fileListStartVisible: true,
                         fileContentToggle: true,
-                        stickyFileHeaders: true,
-                        synchronisedScroll: true
+                        stickyFileHeaders: true
                     });
                     
                     // Check if HTML output is empty
