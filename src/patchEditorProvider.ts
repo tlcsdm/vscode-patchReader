@@ -566,14 +566,29 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             cursor: pointer;
         }
 
-        .d2h-file-wrapper.viewed {
-            opacity: 0.5;
+        .d2h-file-wrapper.viewed .d2h-file-diff,
+        .d2h-file-wrapper.viewed .d2h-files-diff {
+            display: none;
         }
 
         .d2h-file-name-wrapper {
             display: flex;
             align-items: center;
             width: 100%;
+        }
+
+        /* Fix: Make line numbers sticky on the left when scrolling horizontally */
+        .d2h-code-linenumber,
+        .d2h-code-side-linenumber {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Fix: Ensure header tabs appear above sticky line numbers */
+        .header {
+            position: relative;
+            z-index: 10;
         }
     </style>
 </head>
