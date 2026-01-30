@@ -1,0 +1,621 @@
+import * as vscode from 'vscode';
+
+/**
+ * Custom editor provider for patch/diff files
+ */
+export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
+    public static readonly viewType = 'tlcsdm.patchReader.editor';
+    
+    private activeWebviewPanel: vscode.WebviewPanel | undefined;
+    private currentViewMode: 'side-by-side' | 'unified' = 'side-by-side';
+
+    constructor(private readonly context: vscode.ExtensionContext) {
+        // Get default view mode from configuration
+        const config = vscode.workspace.getConfiguration('tlcsdm.patchReader');
+        this.currentViewMode = config.get<'side-by-side' | 'unified'>('defaultViewMode', 'side-by-side');
+    }
+
+    /**
+     * Toggle between side-by-side and unified view modes
+     */
+    public toggleViewMode(): void {
+        this.currentViewMode = this.currentViewMode === 'side-by-side' ? 'unified' : 'side-by-side';
+        if (this.activeWebviewPanel) {
+            this.activeWebviewPanel.webview.postMessage({
+                type: 'setViewMode',
+                viewMode: this.currentViewMode
+            });
+        }
+    }
+
+    /**
+     * Called when a custom editor is opened
+     */
+    public async resolveCustomTextEditor(
+        document: vscode.TextDocument,
+        webviewPanel: vscode.WebviewPanel,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        _token: vscode.CancellationToken
+    ): Promise<void> {
+        this.activeWebviewPanel = webviewPanel;
+
+        // Setup webview options
+        webviewPanel.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [
+                vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+                vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', 'diff2html', 'bundles')
+            ]
+        };
+
+        // Get URIs for diff2html resources
+        const diff2htmlCssUri = webviewPanel.webview.asWebviewUri(
+            vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', 'diff2html', 'bundles', 'css', 'diff2html.min.css')
+        );
+        const diff2htmlJsUri = webviewPanel.webview.asWebviewUri(
+            vscode.Uri.joinPath(this.context.extensionUri, 'node_modules', 'diff2html', 'bundles', 'js', 'diff2html.min.js')
+        );
+
+        // Set initial HTML content
+        webviewPanel.webview.html = this.getHtmlForWebview(
+            webviewPanel.webview,
+            document.getText(),
+            diff2htmlCssUri,
+            diff2htmlJsUri
+        );
+
+        // Handle messages from the webview
+        webviewPanel.webview.onDidReceiveMessage(message => {
+            switch (message.type) {
+                case 'viewModeChanged':
+                    this.currentViewMode = message.viewMode;
+                    break;
+            }
+        });
+
+        // Handle document changes
+        const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(e => {
+            if (e.document.uri.toString() === document.uri.toString()) {
+                webviewPanel.webview.postMessage({
+                    type: 'update',
+                    content: document.getText()
+                });
+            }
+        });
+
+        // Handle theme changes
+        const themeChangeSubscription = vscode.window.onDidChangeActiveColorTheme(theme => {
+            webviewPanel.webview.postMessage({
+                type: 'themeChanged',
+                kind: theme.kind
+            });
+        });
+
+        // Clean up when the webview is disposed
+        webviewPanel.onDidDispose(() => {
+            changeDocumentSubscription.dispose();
+            themeChangeSubscription.dispose();
+            if (this.activeWebviewPanel === webviewPanel) {
+                this.activeWebviewPanel = undefined;
+            }
+        });
+
+        // Send initial theme
+        webviewPanel.webview.postMessage({
+            type: 'themeChanged',
+            kind: vscode.window.activeColorTheme.kind
+        });
+
+        // Send initial view mode
+        webviewPanel.webview.postMessage({
+            type: 'setViewMode',
+            viewMode: this.currentViewMode
+        });
+    }
+
+    /**
+     * Get the HTML content for the webview
+     */
+    private getHtmlForWebview(
+        webview: vscode.Webview,
+        content: string,
+        diff2htmlCssUri: vscode.Uri,
+        diff2htmlJsUri: vscode.Uri
+    ): string {
+        const nonce = getNonce();
+        
+        // Escape content for safe embedding in JavaScript
+        const escapedContent = escapeForJs(content);
+
+        return /* html */`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <link href="${diff2htmlCssUri}" rel="stylesheet">
+    <title>Patch Reader</title>
+    <style>
+        :root {
+            --bg-primary: var(--vscode-editor-background);
+            --bg-secondary: var(--vscode-sideBar-background, var(--vscode-editor-background));
+            --text-primary: var(--vscode-editor-foreground);
+            --text-muted: var(--vscode-descriptionForeground);
+            --border-color: var(--vscode-panel-border, var(--vscode-editorGroup-border));
+            --btn-bg: var(--vscode-button-secondaryBackground);
+            --btn-bg-hover: var(--vscode-button-secondaryHoverBackground);
+            --btn-text: var(--vscode-button-secondaryForeground);
+            --btn-primary-bg: var(--vscode-button-background);
+            --btn-primary-bg-hover: var(--vscode-button-hoverBackground);
+            --btn-primary-text: var(--vscode-button-foreground);
+            --tab-active-bg: var(--vscode-tab-activeBackground);
+            --tab-inactive-bg: var(--vscode-tab-inactiveBackground);
+            --tab-active-fg: var(--vscode-tab-activeForeground);
+            --tab-inactive-fg: var(--vscode-tab-inactiveForeground);
+            --tab-border: var(--vscode-tab-border);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 16px;
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            border: none;
+            background-color: var(--tab-inactive-bg);
+            color: var(--tab-inactive-fg);
+            cursor: pointer;
+            font-size: 13px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .tab:hover {
+            background-color: var(--tab-active-bg);
+        }
+
+        .tab.active {
+            background-color: var(--tab-active-bg);
+            color: var(--tab-active-fg);
+            border-bottom-color: var(--btn-primary-bg);
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 4px;
+        }
+
+        .view-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            background-color: var(--btn-bg);
+            color: var(--btn-text);
+            cursor: pointer;
+            font-size: 12px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .view-btn:hover {
+            background-color: var(--btn-bg-hover);
+        }
+
+        .view-btn.active {
+            background-color: var(--btn-primary-bg);
+            color: var(--btn-primary-text);
+            border-color: var(--btn-primary-bg);
+        }
+
+        .content {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+
+        .tab-content {
+            display: none;
+            height: 100%;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        #raw-content {
+            white-space: pre-wrap;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: var(--vscode-editor-font-size, 13px);
+            line-height: 1.5;
+            background-color: var(--bg-primary);
+            padding: 8px;
+            overflow: auto;
+            height: 100%;
+        }
+
+        #diff-output {
+            overflow: auto;
+            height: 100%;
+        }
+
+        .placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+        }
+
+        /* diff2html theme overrides for VS Code integration */
+        .d2h-wrapper {
+            font-family: var(--vscode-editor-font-family, monospace);
+        }
+
+        .d2h-file-header {
+            background-color: var(--bg-secondary);
+            border-color: var(--border-color);
+        }
+
+        .d2h-file-name {
+            color: var(--text-primary);
+        }
+
+        .d2h-file-wrapper {
+            border-color: var(--border-color);
+        }
+
+        /* Light theme diff colors */
+        body.vscode-light .d2h-del {
+            background-color: #ffeef0;
+        }
+
+        body.vscode-light .d2h-ins {
+            background-color: #e6ffec;
+        }
+
+        body.vscode-light .d2h-info {
+            background-color: #f1f8ff;
+            color: #0366d6;
+        }
+
+        body.vscode-light .d2h-code-line-ctn,
+        body.vscode-light .d2h-code-side-line {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        body.vscode-light .d2h-code-linenumber,
+        body.vscode-light .d2h-code-side-linenumber {
+            background-color: var(--bg-secondary);
+            color: var(--text-muted);
+            border-color: var(--border-color);
+        }
+
+        body.vscode-light .d2h-del .d2h-code-line-ctn,
+        body.vscode-light .d2h-del .d2h-code-side-line {
+            background-color: #ffeef0;
+        }
+
+        body.vscode-light .d2h-ins .d2h-code-line-ctn,
+        body.vscode-light .d2h-ins .d2h-code-side-line {
+            background-color: #e6ffec;
+        }
+
+        /* Dark theme diff colors */
+        body.vscode-dark .d2h-del,
+        body.vscode-high-contrast .d2h-del {
+            background-color: #3d1d26;
+        }
+
+        body.vscode-dark .d2h-ins,
+        body.vscode-high-contrast .d2h-ins {
+            background-color: #1f3d2a;
+        }
+
+        body.vscode-dark .d2h-info,
+        body.vscode-high-contrast .d2h-info {
+            background-color: #1f2937;
+            color: #93c5fd;
+            border-color: var(--border-color);
+        }
+
+        body.vscode-dark .d2h-code-line-ctn,
+        body.vscode-dark .d2h-code-side-line,
+        body.vscode-high-contrast .d2h-code-line-ctn,
+        body.vscode-high-contrast .d2h-code-side-line {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        body.vscode-dark .d2h-code-linenumber,
+        body.vscode-dark .d2h-code-side-linenumber,
+        body.vscode-high-contrast .d2h-code-linenumber,
+        body.vscode-high-contrast .d2h-code-side-linenumber {
+            background-color: var(--bg-secondary);
+            color: var(--text-muted);
+            border-color: var(--border-color);
+        }
+
+        body.vscode-dark .d2h-del .d2h-code-line-ctn,
+        body.vscode-dark .d2h-del .d2h-code-side-line,
+        body.vscode-high-contrast .d2h-del .d2h-code-line-ctn,
+        body.vscode-high-contrast .d2h-del .d2h-code-side-line {
+            background-color: #3d1d26;
+        }
+
+        body.vscode-dark .d2h-ins .d2h-code-line-ctn,
+        body.vscode-dark .d2h-ins .d2h-code-side-line,
+        body.vscode-high-contrast .d2h-ins .d2h-code-line-ctn,
+        body.vscode-high-contrast .d2h-ins .d2h-code-side-line {
+            background-color: #1f3d2a;
+        }
+
+        body.vscode-dark .d2h-emptyplaceholder,
+        body.vscode-dark .d2h-code-side-emptyplaceholder,
+        body.vscode-high-contrast .d2h-emptyplaceholder,
+        body.vscode-high-contrast .d2h-code-side-emptyplaceholder {
+            background-color: var(--bg-secondary);
+            border-color: var(--border-color);
+        }
+
+        body.vscode-dark .d2h-file-list-wrapper,
+        body.vscode-high-contrast .d2h-file-list-wrapper {
+            background-color: var(--bg-secondary);
+            border-color: var(--border-color);
+        }
+
+        body.vscode-dark .d2h-file-list-header,
+        body.vscode-high-contrast .d2h-file-list-header {
+            background-color: var(--bg-secondary);
+        }
+
+        body.vscode-dark .d2h-file-list-title,
+        body.vscode-high-contrast .d2h-file-list-title {
+            color: var(--text-primary);
+        }
+
+        body.vscode-dark .d2h-file-list li,
+        body.vscode-high-contrast .d2h-file-list li {
+            border-color: var(--border-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="tabs">
+                <button class="tab active" data-tab="visual">Visual Diff</button>
+                <button class="tab" data-tab="raw">Raw Content</button>
+            </div>
+            <div class="view-toggle">
+                <button class="view-btn active" data-view="side-by-side">Side-by-Side</button>
+                <button class="view-btn" data-view="unified">Unified</button>
+            </div>
+        </div>
+        <div class="content">
+            <div id="visual-tab" class="tab-content active">
+                <div id="diff-output"></div>
+            </div>
+            <div id="raw-tab" class="tab-content">
+                <pre id="raw-content"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script nonce="${nonce}" src="${diff2htmlJsUri}"></script>
+    <script nonce="${nonce}">
+        (function() {
+            const vscode = acquireVsCodeApi();
+            
+            // DOM elements
+            const diffOutput = document.getElementById('diff-output');
+            const rawContent = document.getElementById('raw-content');
+            const tabs = document.querySelectorAll('.tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const viewBtns = document.querySelectorAll('.view-btn');
+            
+            // State
+            let currentContent = ${JSON.stringify(escapedContent)};
+            let currentViewMode = 'side-by-side';
+            
+            // Initialize
+            function init() {
+                bindEvents();
+                updateRawContent();
+                renderDiff();
+            }
+            
+            // Bind events
+            function bindEvents() {
+                // Tab switching
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        const targetTab = tab.dataset.tab;
+                        switchTab(targetTab);
+                    });
+                });
+                
+                // View mode switching
+                viewBtns.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const viewMode = btn.dataset.view;
+                        setViewMode(viewMode);
+                    });
+                });
+                
+                // Handle messages from extension
+                window.addEventListener('message', event => {
+                    const message = event.data;
+                    switch (message.type) {
+                        case 'update':
+                            currentContent = message.content;
+                            updateRawContent();
+                            renderDiff();
+                            break;
+                        case 'themeChanged':
+                            applyTheme(message.kind);
+                            renderDiff();
+                            break;
+                        case 'setViewMode':
+                            setViewMode(message.viewMode, false);
+                            break;
+                    }
+                });
+            }
+            
+            // Switch tab
+            function switchTab(targetTab) {
+                tabs.forEach(tab => {
+                    tab.classList.toggle('active', tab.dataset.tab === targetTab);
+                });
+                tabContents.forEach(content => {
+                    const tabId = content.id.replace('-tab', '');
+                    content.classList.toggle('active', tabId === targetTab);
+                });
+            }
+            
+            // Set view mode
+            function setViewMode(viewMode, notify = true) {
+                currentViewMode = viewMode;
+                viewBtns.forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.view === viewMode);
+                });
+                renderDiff();
+                
+                if (notify) {
+                    vscode.postMessage({
+                        type: 'viewModeChanged',
+                        viewMode: viewMode
+                    });
+                }
+            }
+            
+            // Apply VS Code theme
+            function applyTheme(themeKind) {
+                // Remove existing theme classes
+                document.body.classList.remove('vscode-light', 'vscode-dark', 'vscode-high-contrast');
+                
+                // Add appropriate class based on theme kind
+                // ThemeKind: 1 = Light, 2 = Dark, 3 = High Contrast
+                switch (themeKind) {
+                    case 1:
+                        document.body.classList.add('vscode-light');
+                        break;
+                    case 2:
+                        document.body.classList.add('vscode-dark');
+                        break;
+                    case 3:
+                        document.body.classList.add('vscode-high-contrast');
+                        break;
+                }
+            }
+            
+            // Update raw content display
+            function updateRawContent() {
+                rawContent.textContent = currentContent;
+            }
+            
+            // Render diff using diff2html
+            function renderDiff() {
+                if (!currentContent || !currentContent.trim()) {
+                    diffOutput.innerHTML = '<div class="placeholder">No diff content to display</div>';
+                    return;
+                }
+                
+                try {
+                    const outputFormat = currentViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line';
+                    
+                    const html = Diff2Html.html(currentContent, {
+                        inputFormat: 'diff',
+                        outputFormat: outputFormat,
+                        showFiles: true,
+                        matching: 'lines',
+                        matchWordsThreshold: 0.25,
+                        maxLineLengthHighlight: 10000,
+                        renderNothingWhenEmpty: false,
+                        fileListToggle: true,
+                        fileListStartVisible: true,
+                        fileContentToggle: true,
+                        stickyFileHeaders: true
+                    });
+                    
+                    diffOutput.innerHTML = html;
+                } catch (error) {
+                    diffOutput.innerHTML = '<div class="placeholder">Failed to render diff: ' + escapeHtml(error.message) + '</div>';
+                }
+            }
+            
+            // Escape HTML for safe display
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
+            // Initialize
+            init();
+        })();
+    </script>
+</body>
+</html>
+        `;
+    }
+}
+
+/**
+ * Generate a nonce for Content Security Policy
+ */
+function getNonce(): string {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+}
+
+/**
+ * Escape content for safe embedding in JavaScript
+ */
+function escapeForJs(content: string): string {
+    return content
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t')
+        .replace(/</g, '\\x3c')
+        .replace(/>/g, '\\x3e');
+}
