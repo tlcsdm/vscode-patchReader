@@ -8,11 +8,28 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
     
     private activeWebviewPanel: vscode.WebviewPanel | undefined;
     private currentViewMode: 'side-by-side' | 'unified' = 'side-by-side';
+    private static outputChannel: vscode.OutputChannel | undefined;
 
     constructor(private readonly context: vscode.ExtensionContext) {
         // Get default view mode from configuration
         const config = vscode.workspace.getConfiguration('tlcsdm.patchReader');
         this.currentViewMode = config.get<'side-by-side' | 'unified'>('defaultViewMode', 'side-by-side');
+        
+        // Create output channel for logging
+        if (!PatchEditorProvider.outputChannel) {
+            PatchEditorProvider.outputChannel = vscode.window.createOutputChannel('Patch Reader');
+        }
+    }
+    
+    /**
+     * Log error message to output channel
+     */
+    private logError(message: string, error?: unknown): void {
+        const timestamp = new Date().toISOString();
+        const errorMessage = error instanceof Error ? error.message : String(error || '');
+        const logMessage = errorMessage ? `[${timestamp}] ERROR: ${message} - ${errorMessage}` : `[${timestamp}] ERROR: ${message}`;
+        PatchEditorProvider.outputChannel?.appendLine(logMessage);
+        PatchEditorProvider.outputChannel?.show();
     }
 
     /**
@@ -71,6 +88,9 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             switch (message.type) {
                 case 'viewModeChanged':
                     this.currentViewMode = message.viewMode;
+                    break;
+                case 'error':
+                    this.logError(message.message, message.error);
                     break;
             }
         });
@@ -272,6 +292,41 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             border: none;
             white-space: pre;
             tab-size: 4;
+        }
+
+        /* Content tab syntax highlighting for diff */
+        #content-output .diff-file-header {
+            color: var(--vscode-textPreformat-foreground, #d4d4d4);
+            font-weight: bold;
+        }
+
+        #content-output .diff-hunk-header {
+            color: #4ec9b0;
+        }
+
+        #content-output .diff-deleted {
+            color: #f14c4c;
+        }
+
+        #content-output .diff-added {
+            color: #23d18b;
+        }
+
+        #content-output .diff-context {
+            color: var(--text-primary);
+        }
+
+        /* Light theme overrides for Content tab */
+        body.vscode-light #content-output .diff-hunk-header {
+            color: #267f99;
+        }
+
+        body.vscode-light #content-output .diff-deleted {
+            color: #cd3131;
+        }
+
+        body.vscode-light #content-output .diff-added {
+            color: #107c10;
         }
 
         .placeholder {
@@ -533,11 +588,59 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 });
             }
             
-            // Update content tab with raw content
+            // Update content tab with raw content and syntax highlighting
             function updateContentTab() {
                 if (contentOutput) {
-                    contentOutput.textContent = currentContent || '';
+                    if (!currentContent) {
+                        contentOutput.innerHTML = '';
+                        return;
+                    }
+                    
+                    // Parse and highlight diff content
+                    const lines = currentContent.split('\\n');
+                    const highlightedLines = lines.map(line => {
+                        const escapedLine = escapeHtml(line);
+                        
+                        // Hunk header (e.g., @@ -1,3 +1,4 @@)
+                        if (line.startsWith('@@') && line.includes('@@', 2)) {
+                            return '<span class="diff-hunk-header">' + escapedLine + '</span>';
+                        }
+                        // File headers - must use specific patterns
+                        if (line.startsWith('diff --git') || 
+                            line.startsWith('index ') ||
+                            /^--- [ab]\\//.test(line) ||
+                            /^\\+\\+\\+ [ab]\\//.test(line) ||
+                            line === '--- /dev/null' ||
+                            line === '+++ /dev/null') {
+                            return '<span class="diff-file-header">' + escapedLine + '</span>';
+                        }
+                        // Deleted lines
+                        if (line.startsWith('-')) {
+                            return '<span class="diff-deleted">' + escapedLine + '</span>';
+                        }
+                        // Added lines
+                        if (line.startsWith('+')) {
+                            return '<span class="diff-added">' + escapedLine + '</span>';
+                        }
+                        // Context lines (unchanged)
+                        return '<span class="diff-context">' + escapedLine + '</span>';
+                    });
+                    
+                    contentOutput.innerHTML = highlightedLines.join('\\n');
                 }
+            }
+            
+            // Escape HTML special characters efficiently
+            const htmlEscapes = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            };
+            
+            function escapeHtml(text) {
+                return text.replace(/[&<>"']/g, char => htmlEscapes[char]);
             }
             
             // Apply VS Code theme
@@ -577,14 +680,26 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     
                     // Check if parsing produced valid results with actual changes
                     if (!diffJson || diffJson.length === 0) {
-                        diffOutput.innerHTML = '<div class="placeholder">Unable to parse diff content. Please check if the content is a valid diff/patch format.</div>';
+                        const errorMsg = 'Unable to parse diff content. Please check if the content is a valid diff/patch format.';
+                        vscode.postMessage({
+                            type: 'error',
+                            message: errorMsg,
+                            error: 'Diff2Html.parse returned empty result'
+                        });
+                        diffOutput.innerHTML = '<div class="placeholder">' + errorMsg + '</div>';
                         return;
                     }
                     
                     // Verify parsed content has meaningful data (at least one file with blocks)
                     const hasValidBlocks = diffJson.some(file => file.blocks && file.blocks.length > 0);
                     if (!hasValidBlocks) {
-                        diffOutput.innerHTML = '<div class="placeholder">No valid diff blocks found. The content may not be in the expected diff/patch format.</div>';
+                        const errorMsg = 'No valid diff blocks found. The content may not be in the expected diff/patch format.';
+                        vscode.postMessage({
+                            type: 'error',
+                            message: errorMsg,
+                            error: 'No blocks found in parsed diff'
+                        });
+                        diffOutput.innerHTML = '<div class="placeholder">' + errorMsg + '</div>';
                         return;
                     }
                     
@@ -611,8 +726,15 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     
                     diffOutput.innerHTML = html;
                 } catch (error) {
+                    const errorMessage = 'An error occurred while rendering the diff. Please check if the content is a valid diff/patch format.';
                     console.error('Failed to render diff:', error);
-                    diffOutput.innerHTML = '<div class="placeholder">An error occurred while rendering the diff. Please check if the content is a valid diff/patch format.</div>';
+                    // Send error to VS Code output channel
+                    vscode.postMessage({
+                        type: 'error',
+                        message: 'Failed to render diff',
+                        error: error instanceof Error ? error.message : String(error)
+                    });
+                    diffOutput.innerHTML = '<div class="placeholder">' + errorMessage + '</div>';
                 }
             }
             
