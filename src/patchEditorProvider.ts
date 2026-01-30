@@ -19,13 +19,15 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
      * Toggle between side-by-side and unified view modes
      */
     public toggleViewMode(): void {
-        this.currentViewMode = this.currentViewMode === 'side-by-side' ? 'unified' : 'side-by-side';
-        if (this.activeWebviewPanel) {
-            this.activeWebviewPanel.webview.postMessage({
-                type: 'setViewMode',
-                viewMode: this.currentViewMode
-            });
+        if (!this.activeWebviewPanel) {
+            vscode.window.showInformationMessage('Please open a patch or diff file to toggle view mode');
+            return;
         }
+        this.currentViewMode = this.currentViewMode === 'side-by-side' ? 'unified' : 'side-by-side';
+        this.activeWebviewPanel.webview.postMessage({
+            type: 'setViewMode',
+            viewMode: this.currentViewMode
+        });
     }
 
     /**
@@ -414,20 +416,20 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
 <body>
     <div class="container">
         <div class="header">
-            <div class="tabs">
-                <button class="tab active" data-tab="visual">Visual Diff</button>
-                <button class="tab" data-tab="raw">Raw Content</button>
+            <div class="tabs" role="tablist" aria-label="View tabs">
+                <button class="tab active" data-tab="visual" role="tab" aria-selected="true" aria-controls="visual-tab" id="visual-tab-btn">Visual Diff</button>
+                <button class="tab" data-tab="raw" role="tab" aria-selected="false" aria-controls="raw-tab" id="raw-tab-btn">Raw Content</button>
             </div>
-            <div class="view-toggle">
-                <button class="view-btn active" data-view="side-by-side">Side-by-Side</button>
-                <button class="view-btn" data-view="unified">Unified</button>
+            <div class="view-toggle" role="group" aria-label="View mode">
+                <button class="view-btn active" data-view="side-by-side" aria-pressed="true" aria-label="Side-by-Side view">Side-by-Side</button>
+                <button class="view-btn" data-view="unified" aria-pressed="false" aria-label="Unified view">Unified</button>
             </div>
         </div>
         <div class="content">
-            <div id="visual-tab" class="tab-content active">
+            <div id="visual-tab" class="tab-content active" role="tabpanel" aria-labelledby="visual-tab-btn">
                 <div id="diff-output"></div>
             </div>
-            <div id="raw-tab" class="tab-content">
+            <div id="raw-tab" class="tab-content" role="tabpanel" aria-labelledby="raw-tab-btn" hidden>
                 <pre id="raw-content"></pre>
             </div>
         </div>
@@ -497,11 +499,19 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             // Switch tab
             function switchTab(targetTab) {
                 tabs.forEach(tab => {
-                    tab.classList.toggle('active', tab.dataset.tab === targetTab);
+                    const isActive = tab.dataset.tab === targetTab;
+                    tab.classList.toggle('active', isActive);
+                    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
                 });
                 tabContents.forEach(content => {
                     const tabId = content.id.replace('-tab', '');
-                    content.classList.toggle('active', tabId === targetTab);
+                    const isActive = tabId === targetTab;
+                    content.classList.toggle('active', isActive);
+                    if (isActive) {
+                        content.removeAttribute('hidden');
+                    } else {
+                        content.setAttribute('hidden', '');
+                    }
                 });
             }
             
@@ -509,7 +519,9 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             function setViewMode(viewMode, notify = true) {
                 currentViewMode = viewMode;
                 viewBtns.forEach(btn => {
-                    btn.classList.toggle('active', btn.dataset.view === viewMode);
+                    const isActive = btn.dataset.view === viewMode;
+                    btn.classList.toggle('active', isActive);
+                    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
                 });
                 renderDiff();
                 
@@ -572,7 +584,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     
                     diffOutput.innerHTML = html;
                 } catch (error) {
-                    diffOutput.innerHTML = '<div class="placeholder">Failed to render diff: ' + escapeHtml(error.message) + '</div>';
+                    console.error('Failed to render diff:', error);
+                    diffOutput.innerHTML = '<div class="placeholder">Unable to render diff. Please check if the content is a valid diff/patch format.</div>';
                 }
             }
             
@@ -616,6 +629,11 @@ function escapeForJs(content: string): string {
         .replace(/\n/g, '\\n')
         .replace(/\r/g, '\\r')
         .replace(/\t/g, '\\t')
+        .replace(/\f/g, '\\f')
+        .replace(/\v/g, '\\v')
+        .replace(/\0/g, '\\0')
         .replace(/</g, '\\x3c')
-        .replace(/>/g, '\\x3e');
+        .replace(/>/g, '\\x3e')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
 }
