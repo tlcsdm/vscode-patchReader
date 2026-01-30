@@ -83,7 +83,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         );
 
         // Handle messages from the webview
-        webviewPanel.webview.onDidReceiveMessage(message => {
+        webviewPanel.webview.onDidReceiveMessage(async message => {
             switch (message.type) {
                 case 'viewModeChanged':
                     this.currentViewMode = message.viewMode;
@@ -91,6 +91,17 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 case 'error':
                     this.logError(message.message, message.error);
                     break;
+                case 'contentChanged': {
+                    // Apply edits from the webview to the document
+                    const edit = new vscode.WorkspaceEdit();
+                    const fullRange = new vscode.Range(
+                        document.positionAt(0),
+                        document.positionAt(document.getText().length)
+                    );
+                    edit.replace(document.uri, fullRange, message.content);
+                    await vscode.workspace.applyEdit(edit);
+                    break;
+                }
             }
         });
 
@@ -261,11 +272,13 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             flex: 1;
             overflow: auto;
             padding: 16px;
+            min-height: 0;
         }
 
         .tab-content {
             display: none;
             height: 100%;
+            overflow: hidden;
         }
 
         .tab-content.active {
@@ -291,6 +304,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             border: none;
             white-space: pre;
             tab-size: 4;
+            resize: none;
+            outline: none;
         }
 
         /* Diff syntax highlighting - matching VS Code built-in editor */
@@ -477,6 +492,89 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         body.vscode-high-contrast .d2h-file-list li {
             border-color: var(--border-color);
         }
+
+        /* Unified (line-by-line) view specific styles */
+        body.vscode-dark .d2h-file-diff .d2h-del,
+        body.vscode-high-contrast .d2h-file-diff .d2h-del {
+            background-color: rgba(248, 81, 73, 0.25);
+        }
+
+        body.vscode-dark .d2h-file-diff .d2h-ins,
+        body.vscode-high-contrast .d2h-file-diff .d2h-ins {
+            background-color: rgba(63, 185, 80, 0.25);
+        }
+
+        body.vscode-dark .d2h-file-diff .d2h-del .d2h-code-line-ctn,
+        body.vscode-high-contrast .d2h-file-diff .d2h-del .d2h-code-line-ctn {
+            background-color: rgba(248, 81, 73, 0.25);
+        }
+
+        body.vscode-dark .d2h-file-diff .d2h-ins .d2h-code-line-ctn,
+        body.vscode-high-contrast .d2h-file-diff .d2h-ins .d2h-code-line-ctn {
+            background-color: rgba(63, 185, 80, 0.25);
+        }
+
+        body.vscode-light .d2h-file-diff .d2h-del {
+            background-color: #ffebe9;
+        }
+
+        body.vscode-light .d2h-file-diff .d2h-ins {
+            background-color: #e6ffec;
+        }
+
+        body.vscode-light .d2h-file-diff .d2h-del .d2h-code-line-ctn {
+            background-color: #ffebe9;
+        }
+
+        body.vscode-light .d2h-file-diff .d2h-ins .d2h-code-line-ctn {
+            background-color: #e6ffec;
+        }
+
+        /* Deletion marker color */
+        body.vscode-dark .d2h-del .d2h-code-line-prefix,
+        body.vscode-high-contrast .d2h-del .d2h-code-line-prefix {
+            color: #f85149;
+        }
+
+        /* Insertion marker color */
+        body.vscode-dark .d2h-ins .d2h-code-line-prefix,
+        body.vscode-high-contrast .d2h-ins .d2h-code-line-prefix {
+            color: #3fb950;
+        }
+
+        body.vscode-light .d2h-del .d2h-code-line-prefix {
+            color: #cf222e;
+        }
+
+        body.vscode-light .d2h-ins .d2h-code-line-prefix {
+            color: #1a7f37;
+        }
+
+        /* Viewed checkbox styles */
+        .d2h-viewed-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+            padding-right: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .d2h-viewed-checkbox input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .d2h-file-wrapper.viewed {
+            opacity: 0.5;
+        }
+
+        .d2h-file-name-wrapper {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -486,7 +584,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 <div id="diff-output"></div>
             </div>
             <div id="content-tab" class="tab-content" role="tabpanel" aria-labelledby="content-tab-btn">
-                <pre id="content-output"></pre>
+                <textarea id="content-output"></textarea>
             </div>
         </div>
         <div class="header">
@@ -516,6 +614,20 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             // State
             let currentContent = ${JSON.stringify(content)};
             let currentViewMode = 'side-by-side';
+            let renderDebounceTimer = null;
+            
+            // Debounce helper
+            function debounce(fn, delay) {
+                return function(...args) {
+                    if (renderDebounceTimer) {
+                        clearTimeout(renderDebounceTimer);
+                    }
+                    renderDebounceTimer = setTimeout(() => fn.apply(this, args), delay);
+                };
+            }
+            
+            // Debounced render for content changes
+            const debouncedRenderDiff = debounce(renderDiff, 300);
             
             // Initialize
             function init() {
@@ -540,6 +652,19 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         const viewMode = btn.dataset.view;
                         setViewMode(viewMode);
                     });
+                });
+                
+                // Content editing - send changes to VS Code
+                contentOutput.addEventListener('input', () => {
+                    const newContent = contentOutput.value;
+                    if (newContent !== currentContent) {
+                        currentContent = newContent;
+                        vscode.postMessage({
+                            type: 'contentChanged',
+                            content: newContent
+                        });
+                        debouncedRenderDiff();
+                    }
                 });
                 
                 // Handle messages from extension
@@ -599,54 +724,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             // Update content tab with raw content
             function updateContentTab() {
                 if (contentOutput) {
-                    contentOutput.innerHTML = highlightDiffContent(currentContent || '');
+                    contentOutput.value = currentContent || '';
                 }
-            }
-            
-            // Highlight diff content with syntax coloring
-            function highlightDiffContent(content) {
-                if (!content) return '';
-                
-                const lines = content.split('\\n');
-                const highlightedLines = lines.map(line => {
-                    const escapedLine = escapeHtml(line);
-                    
-                    // Diff header lines (diff --git, ---, +++)
-                    if (line.startsWith('diff --git') || line.startsWith('diff -')) {
-                        return '<span class="diff-line-header">' + escapedLine + '</span>';
-                    }
-                    // File path lines
-                    if (line.startsWith('--- ') || line.startsWith('+++ ')) {
-                        return '<span class="diff-line-meta">' + escapedLine + '</span>';
-                    }
-                    // Index line
-                    if (line.startsWith('index ')) {
-                        return '<span class="diff-line-index">' + escapedLine + '</span>';
-                    }
-                    // Hunk header (@@ ... @@)
-                    if (line.startsWith('@@') && line.includes('@@')) {
-                        return '<span class="diff-line-range">' + escapedLine + '</span>';
-                    }
-                    // Added lines
-                    if (line.startsWith('+')) {
-                        return '<span class="diff-line-add">' + escapedLine + '</span>';
-                    }
-                    // Deleted lines
-                    if (line.startsWith('-')) {
-                        return '<span class="diff-line-delete">' + escapedLine + '</span>';
-                    }
-                    // Context/unchanged lines
-                    return escapedLine;
-                });
-                
-                return highlightedLines.join('\\n');
-            }
-            
-            // Escape HTML special characters
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
             }
             
             // Apply VS Code theme
@@ -667,6 +746,81 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         document.body.classList.add('vscode-high-contrast');
                         break;
                 }
+            }
+            
+            // Setup synchronized horizontal scrolling for side-by-side view
+            function setupSynchronizedScroll() {
+                // Find all file wrappers with side-by-side diff
+                const fileWrappers = diffOutput.querySelectorAll('.d2h-file-wrapper');
+                
+                fileWrappers.forEach(wrapper => {
+                    const sidePanels = wrapper.querySelectorAll('.d2h-file-side-diff');
+                    if (sidePanels.length !== 2) return;
+                    
+                    const leftPanel = sidePanels[0];
+                    const rightPanel = sidePanels[1];
+                    let scrollSource = null;
+                    
+                    function syncScroll(source, target) {
+                        if (scrollSource && scrollSource !== source) return;
+                        scrollSource = source;
+                        
+                        requestAnimationFrame(() => {
+                            target.scrollLeft = source.scrollLeft;
+                            scrollSource = null;
+                        });
+                    }
+                    
+                    leftPanel.addEventListener('scroll', function() {
+                        syncScroll(this, rightPanel);
+                    });
+                    
+                    rightPanel.addEventListener('scroll', function() {
+                        syncScroll(this, leftPanel);
+                    });
+                });
+            }
+            
+            // Setup viewed checkbox functionality for each file
+            function setupViewedCheckboxes() {
+                const fileWrappers = diffOutput.querySelectorAll('.d2h-file-wrapper');
+                fileWrappers.forEach((wrapper, index) => {
+                    const header = wrapper.querySelector('.d2h-file-header');
+                    if (!header) return;
+                    
+                    // Check if checkbox already exists
+                    if (header.querySelector('.d2h-viewed-checkbox')) return;
+                    
+                    // Get file name for accessibility
+                    const fileNameEl = header.querySelector('.d2h-file-name');
+                    const fileName = fileNameEl ? fileNameEl.textContent : 'File ' + (index + 1);
+                    const checkboxId = 'd2h-viewed-' + index;
+                    
+                    // Create viewed checkbox container
+                    const checkboxContainer = document.createElement('label');
+                    checkboxContainer.className = 'd2h-viewed-checkbox';
+                    checkboxContainer.setAttribute('for', checkboxId);
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = checkboxId;
+                    checkbox.setAttribute('aria-label', 'Mark ' + fileName + ' as viewed');
+                    checkbox.addEventListener('change', function() {
+                        wrapper.classList.toggle('viewed', this.checked);
+                    });
+                    
+                    const labelText = document.createElement('span');
+                    labelText.textContent = 'Viewed';
+                    
+                    checkboxContainer.appendChild(checkbox);
+                    checkboxContainer.appendChild(labelText);
+                    
+                    // Insert checkbox into header
+                    const fileNameWrapper = header.querySelector('.d2h-file-name-wrapper');
+                    if (fileNameWrapper) {
+                        fileNameWrapper.appendChild(checkboxContainer);
+                    }
+                });
             }
             
             // Render diff using diff2html
@@ -744,6 +898,14 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                     
                     diffOutput.innerHTML = html;
+                    
+                    // Setup synchronized scrolling for side-by-side view
+                    if (currentViewMode === 'side-by-side') {
+                        setupSynchronizedScroll();
+                    }
+                    
+                    // Add viewed checkbox functionality
+                    setupViewedCheckboxes();
                 } catch (error) {
                     const errorMessage = 'An error occurred while rendering the diff. Please check if the content is a valid diff/patch format.';
                     console.error('Failed to render diff:', error);
