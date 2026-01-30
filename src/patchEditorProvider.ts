@@ -587,6 +587,17 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             border-right: none;
         }
 
+        /* Fix: Reduce padding to remove gap between line numbers and content */
+        .d2h-code-line {
+            padding: 0 7.5em;
+            width: calc(100% - 15em);
+        }
+
+        .d2h-code-side-line {
+            padding: 0 4em;
+            width: calc(100% - 8em);
+        }
+
         /* Fix: Ensure header tabs appear above sticky line numbers */
         .header {
             position: relative;
