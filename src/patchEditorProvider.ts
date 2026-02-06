@@ -876,7 +876,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 // Match the git email signature footer: "-- " followed by newline and version info
                 // The footer starts with "-- " on its own line (with possible trailing whitespace)
                 // followed by a git version number (e.g., "2.43.0") on the next line
-                return content.replace(/\\n-- \\n[0-9]+\\.[0-9]+[^\\n]*\\n?$/, '\\n');
+                var footerPattern = new RegExp('\\n-- \\n[0-9]+\\.[0-9]+[^\\n]*\\n?$');
+                return content.replace(footerPattern, '\n');
             }
             
             // Render diff using diff2html
