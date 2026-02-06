@@ -869,6 +869,16 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 });
             }
             
+            // Strip git format-patch footer (e.g., "-- \n2.43.0\n")
+            // This footer is added by git format-patch and should not be parsed as diff content
+            function stripGitPatchFooter(content) {
+                if (!content) return content;
+                // Match the git email signature footer: "-- " followed by newline and version info
+                // The footer starts with "-- " on its own line (with possible trailing whitespace)
+                // followed by a git version number (e.g., "2.43.0") on the next line
+                return content.replace(/\\n-- \\n[0-9]+\\.[0-9]+[^\\n]*\\n?$/, '\\n');
+            }
+            
             // Render diff using diff2html
             function renderDiff() {
                 if (!currentContent || !currentContent.trim()) {
@@ -892,8 +902,11 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 try {
                     const outputFormat = currentViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line';
                     
+                    // Strip git format-patch footer before parsing
+                    const contentToParse = stripGitPatchFooter(currentContent);
+                    
                     // First, try to parse the diff content
-                    const diffJson = Diff2HtmlLib.parse(currentContent, {
+                    const diffJson = Diff2HtmlLib.parse(contentToParse, {
                         inputFormat: 'diff'
                     });
                     
