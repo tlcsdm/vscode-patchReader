@@ -91,7 +91,7 @@
     "@vscode/vsce": "^3.9.1",
     "eslint": "^10.3.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.2"
+    "typescript-eslint": "^8.59.3"
   },
   "dependencies": {
     "diff2html": "^3.4.56"
