@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+## [1.0.2] - 2026-07-03
 
 ### Fixed
 - Load bundled `diff2html` webview assets from `node_modules` when the copied `media` assets are unavailable during local development and testing
