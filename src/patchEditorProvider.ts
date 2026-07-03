@@ -1,4 +1,37 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
+
+const DIFF2HTML_ASSET_FILES = [
+    path.join('css', 'diff2html.min.css'),
+    path.join('js', 'diff2html.min.js')
+];
+
+/**
+ * Check whether all required diff2html asset files exist under the given asset root.
+ */
+function hasDiff2HtmlAssets(assetRoot: string): boolean {
+    return DIFF2HTML_ASSET_FILES.every(file => fs.existsSync(path.join(assetRoot, file)));
+}
+
+/**
+ * Resolve the diff2html asset directory for this extension installation.
+ * Prefers packaged media assets and falls back to the local dependency bundle
+ * when running from a source checkout where copied media assets are absent.
+ */
+export function resolveDiff2HtmlAssetDirectory(extensionPath: string): string {
+    const mediaAssetRoot = path.join(extensionPath, 'media', 'diff2html');
+    if (hasDiff2HtmlAssets(mediaAssetRoot)) {
+        return mediaAssetRoot;
+    }
+
+    const nodeModulesAssetRoot = path.join(extensionPath, 'node_modules', 'diff2html', 'bundles');
+    if (hasDiff2HtmlAssets(nodeModulesAssetRoot)) {
+        return nodeModulesAssetRoot;
+    }
+
+    return mediaAssetRoot;
+}
 
 /**
  * Custom editor provider for patch/diff files
@@ -59,19 +92,26 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         this.activeWebviewPanel = webviewPanel;
 
         // Setup webview options
+        const diff2htmlAssetDirectory = resolveDiff2HtmlAssetDirectory(this.context.extensionUri.fsPath);
+        if (!hasDiff2HtmlAssets(diff2htmlAssetDirectory)) {
+            this.logError(`Diff2Html assets were not found in ${diff2htmlAssetDirectory}`);
+        }
+
+        const diff2htmlAssetRoot = vscode.Uri.file(diff2htmlAssetDirectory);
+
         webviewPanel.webview.options = {
             enableScripts: true,
             localResourceRoots: [
-                vscode.Uri.joinPath(this.context.extensionUri, 'media')
+                diff2htmlAssetRoot
             ]
         };
 
-        // Get URIs for diff2html resources from media folder
+        // Get URIs for diff2html resources from the packaged media folder or the local dependency fallback
         const diff2htmlCssUri = webviewPanel.webview.asWebviewUri(
-            vscode.Uri.joinPath(this.context.extensionUri, 'media', 'diff2html', 'css', 'diff2html.min.css')
+            vscode.Uri.joinPath(diff2htmlAssetRoot, 'css', 'diff2html.min.css')
         );
         const diff2htmlJsUri = webviewPanel.webview.asWebviewUri(
-            vscode.Uri.joinPath(this.context.extensionUri, 'media', 'diff2html', 'js', 'diff2html.min.js')
+            vscode.Uri.joinPath(diff2htmlAssetRoot, 'js', 'diff2html.min.js')
         );
 
         // Set initial HTML content
