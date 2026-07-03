@@ -7,10 +7,18 @@ const DIFF2HTML_ASSET_FILES = [
     path.join('js', 'diff2html.min.js')
 ];
 
+/**
+ * Check whether all required diff2html asset files exist under the given asset root.
+ */
 function hasDiff2HtmlAssets(assetRoot: string): boolean {
     return DIFF2HTML_ASSET_FILES.every(file => fs.existsSync(path.join(assetRoot, file)));
 }
 
+/**
+ * Resolve the diff2html asset directory for this extension installation.
+ * Prefers packaged media assets and falls back to the local dependency bundle
+ * when running from a source checkout where copied media assets are absent.
+ */
 export function resolveDiff2HtmlAssetDirectory(extensionPath: string): string {
     const mediaAssetRoot = path.join(extensionPath, 'media', 'diff2html');
     if (hasDiff2HtmlAssets(mediaAssetRoot)) {
