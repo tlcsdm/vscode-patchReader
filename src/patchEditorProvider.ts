@@ -84,7 +84,12 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         this.activeWebviewPanel = webviewPanel;
 
         // Setup webview options
-        const diff2htmlAssetRoot = vscode.Uri.file(resolveDiff2HtmlAssetDirectory(this.context.extensionUri.fsPath));
+        const diff2htmlAssetDirectory = resolveDiff2HtmlAssetDirectory(this.context.extensionUri.fsPath);
+        if (!hasDiff2HtmlAssets(diff2htmlAssetDirectory)) {
+            this.logError(`Diff2Html assets were not found in ${diff2htmlAssetDirectory}`);
+        }
+
+        const diff2htmlAssetRoot = vscode.Uri.file(diff2htmlAssetDirectory);
 
         webviewPanel.webview.options = {
             enableScripts: true,
