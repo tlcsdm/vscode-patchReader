@@ -1,25 +1,45 @@
 import eslint from '@eslint/js';
-import tseslint from 'typescript-eslint';
+import babelParser from '@babel/eslint-parser';
 
-export default tseslint.config(
+const mochaGlobals = {
+    suite: 'readonly',
+    test: 'readonly',
+    setup: 'readonly',
+    teardown: 'readonly',
+    suiteSetup: 'readonly',
+    suiteTeardown: 'readonly'
+};
+
+export default [
+    {
+        files: ['**/*.ts', '**/*.tsx'],
+        languageOptions: {
+            parser: babelParser,
+            parserOptions: {
+                requireConfigFile: false,
+                babelOptions: {
+                    plugins: ['@babel/plugin-syntax-typescript']
+                }
+            }
+        }
+    },
     eslint.configs.recommended,
-    ...tseslint.configs.recommended,
     {
         ignores: ['out/**', 'node_modules/**', '**/*.d.ts']
     },
     {
+        files: ['src/test/**/*.ts'],
+        languageOptions: {
+            globals: mochaGlobals
+        }
+    },
+    {
         rules: {
-            '@typescript-eslint/naming-convention': [
-                'warn',
-                {
-                    selector: 'import',
-                    format: ['camelCase', 'PascalCase']
-                }
-            ],
             curly: 'warn',
             eqeqeq: 'warn',
             'no-throw-literal': 'warn',
-            semi: 'warn'
+            semi: 'warn',
+            'no-unused-vars': ['warn', { vars: 'all', args: 'after-used', argsIgnorePattern: '^_' }]
         }
     }
-);
+];
