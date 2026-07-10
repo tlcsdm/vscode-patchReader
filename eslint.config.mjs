@@ -18,10 +18,7 @@ export default [
             parserOptions: {
                 requireConfigFile: false,
                 babelOptions: {
-                    plugins: ['@babel/plugin-syntax-typescript'],
-                    parserOpts: {
-                        plugins: [['typescript', { allExtensions: true, isTSX: false }]]
-                    }
+                    plugins: ['@babel/plugin-syntax-typescript']
                 }
             }
         }
@@ -42,7 +39,7 @@ export default [
             eqeqeq: 'warn',
             'no-throw-literal': 'warn',
             semi: 'warn',
-            'no-unused-vars': ['warn', { vars: 'all', args: 'none' }]
+            'no-unused-vars': ['warn', { vars: 'all', args: 'after-used', argsIgnorePattern: '^_' }]
         }
     }
 ];

@@ -43,6 +43,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
     private currentViewMode: 'side-by-side' | 'unified' = 'side-by-side';
     private static outputChannel: vscode.OutputChannel | undefined;
 
+    // eslint-disable-next-line no-unused-vars
     constructor(private readonly context: vscode.ExtensionContext) {
         // Get default view mode from configuration
         const config = vscode.workspace.getConfiguration('tlcsdm.patchReader');
