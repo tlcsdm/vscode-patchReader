@@ -91,6 +91,100 @@ suite('Extension Test Suite', () => {
         );
     });
 
+    test('Webview client script and diff2html should render a diff end-to-end', async () => {
+        // End-to-end validation of the diff2html usage: load the shipped
+        // diff2html bundle and the webview client script into a DOM and assert
+        // that a patch is actually rendered into #diff-output. This guards
+        // against the "blank Visual tab" class of regressions.
+        const { JSDOM } = await import('jsdom');
+
+        const extension = vscode.extensions.getExtension('unknowIfGuestInDream.tlcsdm-patch-reader');
+        assert.ok(extension, 'Extension should be present');
+        const assetDir = resolveDiff2HtmlAssetDirectory(extension.extensionPath);
+        const diff2htmlJsPath = path.join(assetDir, 'js', 'diff2html.min.js');
+        assert.ok(fs.existsSync(diff2htmlJsPath), 'diff2html.min.js should be available for the webview');
+        const diff2htmlJs = fs.readFileSync(diff2htmlJsPath, 'utf8');
+        const patchViewerJs = fs.readFileSync(
+            path.join(extension.extensionPath, 'media', 'patchViewer.js'),
+            'utf8'
+        );
+
+        const patch = [
+            'diff --git a/file.txt b/file.txt',
+            'index 0000000..1111111 100644',
+            '--- a/file.txt',
+            '+++ b/file.txt',
+            '@@ -1 +1 @@',
+            '-old line',
+            '+new line',
+            ''
+        ].join('\n');
+        const initialContentJson = JSON.stringify(patch).replace(/</g, '\\u003c');
+
+        const html = `<!DOCTYPE html><html><head></head><body>
+<div class="container">
+    <div class="content">
+        <div id="visual-tab" class="tab-content active"><div id="diff-output"></div></div>
+        <div id="content-tab" class="tab-content"><textarea id="content-output"></textarea></div>
+    </div>
+    <div class="header">
+        <div class="tabs">
+            <button class="tab active" data-tab="visual">Visual</button>
+            <button class="tab" data-tab="content">Content</button>
+        </div>
+        <div class="view-toggle">
+            <button class="view-btn active" data-view="side-by-side">Side-by-Side</button>
+            <button class="view-btn" data-view="unified">Unified</button>
+        </div>
+    </div>
+</div>
+<script id="patch-initial-content" type="application/json">${initialContentJson}</script>
+</body></html>`;
+
+        const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+        const { window } = dom;
+        try {
+            (window as any).acquireVsCodeApi = () => ({
+                postMessage: () => { /* no-op */ }
+            });
+
+            const bundleScript = window.document.createElement('script');
+            bundleScript.textContent = diff2htmlJs;
+            window.document.body.appendChild(bundleScript);
+            assert.ok(
+                (window as any).Diff2Html,
+                'diff2html bundle should expose a global Diff2Html'
+            );
+
+            const viewerScript = window.document.createElement('script');
+            viewerScript.textContent = patchViewerJs;
+            window.document.body.appendChild(viewerScript);
+
+            const diffOutput = window.document.getElementById('diff-output');
+            assert.ok(diffOutput, '#diff-output should exist');
+            assert.ok(
+                diffOutput!.querySelector('.d2h-file-wrapper'),
+                'diff2html should render at least one file into #diff-output'
+            );
+
+            // Content tab must be switchable: clicking the Content tab activates it.
+            const contentTabBtn = window.document.querySelector('.tab[data-tab="content"]') as any;
+            assert.ok(contentTabBtn, 'Content tab button should exist');
+            contentTabBtn!.click();
+            assert.ok(
+                window.document.getElementById('content-tab')!.classList.contains('active'),
+                'Clicking the Content tab should activate the content panel'
+            );
+            assert.strictEqual(
+                (window.document.getElementById('content-output') as any).value,
+                patch,
+                'Content tab should display the raw patch text'
+            );
+        } finally {
+            window.close();
+        }
+    });
+
     test('Initial patch content should be embedded safely and round-trip', () => {
         const provider = new PatchEditorProvider({
             extensionUri: vscode.Uri.file('/ext'),
