@@ -984,9 +984,9 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             // This footer is added by git format-patch and should not be parsed as diff content.
             function stripGitPatchFooter(content) {
                 if (!content) return content;
-                // Match the git email signature footer: "-- " followed by newline and version info.
-                // The footer starts with "-- " on its own line (with possible trailing whitespace)
-                // followed by a git version number (such as 2.43.0) on the next line.
+                // Match the git email signature footer: a "-- " line followed by version info.
+                // The footer is exactly "-- " on its own line, immediately followed by a git
+                // version number (such as 2.43.0) on the next line.
                 var footerPattern = new RegExp('\\n-- \\n[0-9]+\\.[0-9]+[^\\n]*\\n?$');
                 return content.replace(footerPattern, '\\n');
             }
