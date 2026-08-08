@@ -73,8 +73,29 @@ suite('Extension Test Suite', () => {
         }
     });
 
-    test('Generated webview script should be valid JavaScript', () => {
-        const provider = new PatchEditorProvider({ subscriptions: [] } as any);
+    test('Webview client script file should be valid JavaScript', () => {
+        // The webview client script is now a standalone static file loaded via
+        // asWebviewUri(), so it is delivered to the browser verbatim. Validate
+        // that the shipped file parses as JavaScript.
+        const extension = vscode.extensions.getExtension('unknowIfGuestInDream.tlcsdm-patch-reader');
+        assert.ok(extension, 'Extension should be present');
+        const scriptPath = path.join(extension.extensionPath, 'media', 'patchViewer.js');
+        assert.ok(fs.existsSync(scriptPath), 'media/patchViewer.js should exist');
+        const scriptBody = fs.readFileSync(scriptPath, 'utf8');
+
+        // new Function only parses (does not execute) the body, so browser globals
+        // are not required. A malformed script would throw a SyntaxError here.
+        assert.doesNotThrow(
+            () => new Function(scriptBody),
+            'Webview client script must be syntactically valid JavaScript'
+        );
+    });
+
+    test('Initial patch content should be embedded safely and round-trip', () => {
+        const provider = new PatchEditorProvider({
+            extensionUri: vscode.Uri.file('/ext'),
+            subscriptions: []
+        } as any);
         const panel = vscode.window.createWebviewPanel(
             'tlcsdm.patchReader.test',
             'Patch Reader Test',
@@ -84,31 +105,53 @@ suite('Extension Test Suite', () => {
         try {
             const cssUri = panel.webview.asWebviewUri(vscode.Uri.file('/assets/diff2html.min.css'));
             const jsUri = panel.webview.asWebviewUri(vscode.Uri.file('/assets/diff2html.min.js'));
-            // Content that would break naive inline embedding, to also exercise the escaping
-            // (a diffed <script> tag plus a git format-patch footer).
+            const viewerCssUri = panel.webview.asWebviewUri(vscode.Uri.file('/media/patchViewer.css'));
+            const viewerJsUri = panel.webview.asWebviewUri(vscode.Uri.file('/media/patchViewer.js'));
+
+            // Content that would break naive inline embedding: a diffed <script> tag,
+            // an HTML comment, and a git format-patch footer.
             const trickyContent = [
                 'diff --git a/index.html b/index.html',
                 '@@ -1 +1 @@',
                 '-<script>a()</script>',
-                '+<script>b()</script>',
+                '+<script>b()</script><!-- x -->',
                 '-- ',
                 '2.43.0',
                 ''
             ].join('\n');
 
-            const html = (provider as any).getHtmlForWebview(panel.webview, trickyContent, cssUri, jsUri);
+            const html = (provider as any).getHtmlForWebview(
+                panel.webview,
+                trickyContent,
+                cssUri,
+                jsUri,
+                viewerCssUri,
+                viewerJsUri
+            );
 
-            // Extract the inline application script (the nonce <script> block that has no src attribute).
-            const match = html.match(/<script nonce="[^"]*">([\s\S]*?)<\/script>/);
-            assert.ok(match, 'Inline application script block should be present in the webview HTML');
-            const scriptBody = match[1];
+            // The client script must be referenced as an external file, not inlined.
+            assert.ok(
+                /<script[^>]*src="[^"]*patchViewer\.js"[^>]*><\/script>/.test(html),
+                'Webview HTML should load the external patchViewer.js script'
+            );
 
-            // new Function only parses (does not execute) the body, so browser globals are not required.
-            // A malformed script — e.g. a comment or string literal broken by an unescaped newline —
-            // would throw a SyntaxError here.
-            assert.doesNotThrow(
-                () => new Function(scriptBody),
-                'Inline webview script must be syntactically valid JavaScript'
+            // The embedded JSON data block must not contain a raw "</script>" from
+            // the patch content, otherwise the HTML parser would close it early.
+            const dataMatch = html.match(
+                /<script id="patch-initial-content" type="application\/json"[^>]*>([\s\S]*?)<\/script>/
+            );
+            assert.ok(dataMatch, 'Initial content data block should be present in the webview HTML');
+            const dataBlock = dataMatch[1];
+            assert.ok(
+                !/<\/script/i.test(dataBlock),
+                'Embedded content data block must not contain a raw </script> sequence'
+            );
+
+            // The data block must be valid JSON that round-trips to the original content.
+            assert.strictEqual(
+                JSON.parse(dataBlock),
+                trickyContent,
+                'Embedded content must round-trip back to the original patch text'
             );
         } finally {
             panel.dispose();
