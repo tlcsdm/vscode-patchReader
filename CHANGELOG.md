@@ -1,5 +1,11 @@
 # Change Log
 
+## [Unreleased]
+
+### Fixed
+- Fixed a blank Visual view and unresponsive tabs caused by invalid JavaScript in the webview: `\n` escape sequences inside the client script were consumed by the surrounding template literal, producing a syntax error that aborted the entire inline script
+- Added a regression test that verifies the generated webview script is syntactically valid JavaScript
+
 ## [1.0.2] - 2026-07-03
 
 ### Fixed
