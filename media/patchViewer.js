@@ -114,6 +114,12 @@
         
         // Handle messages from extension
         window.addEventListener('message', event => {
+            const trustedOrigin = window.location.origin;
+            if (event.origin !== trustedOrigin) {
+                logWarn('Ignored message from untrusted origin: ' + event.origin);
+                return;
+            }
+
             const message = event.data;
             switch (message.type) {
                 case 'update':
