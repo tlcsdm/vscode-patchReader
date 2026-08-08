@@ -135,8 +135,10 @@ suite('Extension Test Suite', () => {
                 'Webview HTML should load the external patchViewer.js script'
             );
 
-            // The embedded JSON data block must not contain a raw "</script>" from
-            // the patch content, otherwise the HTML parser would close it early.
+            // Because getHtmlForWebview escapes every "<" as "\u003c", the patch's
+            // own "</script>" becomes "\u003c/script>" in the data block. The lazy
+            // regex terminator below is therefore only matched by the block's real
+            // closing tag, and the data block itself contains no raw "</script>".
             const dataMatch = html.match(
                 /<script id="patch-initial-content" type="application\/json"[^>]*>([\s\S]*?)<\/script>/
             );
@@ -147,7 +149,8 @@ suite('Extension Test Suite', () => {
                 'Embedded content data block must not contain a raw </script> sequence'
             );
 
-            // The data block must be valid JSON that round-trips to the original content.
+            // The data block must be valid JSON that round-trips to the original
+            // content exactly, proving the escaping preserves the patch verbatim.
             assert.strictEqual(
                 JSON.parse(dataBlock),
                 trickyContent,

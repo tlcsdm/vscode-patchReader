@@ -244,6 +244,8 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         const nonce = getNonce();
 
         // Embed the initial patch content in a non-executable JSON data block.
+        // A `type="application/json"` block is never executed, so the CSP
+        // `script-src` directive does not apply to it and it needs no nonce.
         // Escaping every "<" as "\u003c" keeps the JSON valid while guaranteeing
         // the raw text can never contain "</script>", so the HTML parser cannot
         // close the data block early — regardless of what the patch contains.
@@ -282,7 +284,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
         </div>
     </div>
 
-    <script id="patch-initial-content" type="application/json" nonce="${nonce}">${initialContentJson}</script>
+    <script id="patch-initial-content" type="application/json">${initialContentJson}</script>
     <script nonce="${nonce}" src="${diff2htmlJsUri}"></script>
     <script nonce="${nonce}" src="${patchViewerJsUri}"></script>
 </body>
