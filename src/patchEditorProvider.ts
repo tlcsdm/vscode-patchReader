@@ -804,17 +804,19 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 });
                 
                 // Content editing - send changes to VS Code
-                contentOutput.addEventListener('input', () => {
-                    const newContent = contentOutput.value;
-                    if (newContent !== currentContent) {
-                        currentContent = newContent;
-                        vscode.postMessage({
-                            type: 'contentChanged',
-                            content: newContent
-                        });
-                        debouncedRenderDiff();
-                    }
-                });
+                if (contentOutput) {
+                    contentOutput.addEventListener('input', () => {
+                        const newContent = contentOutput.value;
+                        if (newContent !== currentContent) {
+                            currentContent = newContent;
+                            vscode.postMessage({
+                                type: 'contentChanged',
+                                content: newContent
+                            });
+                            debouncedRenderDiff();
+                        }
+                    });
+                }
                 
                 // Handle messages from extension
                 window.addEventListener('message', event => {
@@ -886,7 +888,7 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                 document.body.classList.remove('vscode-light', 'vscode-dark', 'vscode-high-contrast');
                 
                 // Add appropriate class based on theme kind
-                // ThemeKind: 1 = Light, 2 = Dark, 3 = High Contrast
+                // ThemeKind: 1 = Light, 2 = Dark, 3 = HighContrast (Dark), 4 = HighContrast (Light)
                 switch (themeKind) {
                     case 1:
                         document.body.classList.add('vscode-light');
@@ -896,6 +898,9 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                         break;
                     case 3:
                         document.body.classList.add('vscode-high-contrast');
+                        break;
+                    case 4:
+                        document.body.classList.add('vscode-light');
                         break;
                 }
             }
@@ -1013,24 +1018,15 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
                     // Strip git format-patch footer before parsing
                     const contentToParse = stripGitPatchFooter(currentContent);
                     
-                    // First, try to parse the diff content
+                    // Parse the diff content
                     const diffJson = Diff2HtmlLib.parse(contentToParse, {
                         inputFormat: 'diff'
                     });
                     
-                    // Check if parsing produced valid results with actual changes
+                    // Check if parsing produced any results
                     if (!diffJson || diffJson.length === 0) {
                         const errorMsg = 'Unable to parse diff content. Please check if the content is a valid diff/patch format.';
                         logWarn('Diff2Html.parse returned an empty result for the provided content');
-                        diffOutput.innerHTML = '<div class="placeholder">' + errorMsg + '</div>';
-                        return;
-                    }
-                    
-                    // Verify parsed content has meaningful data (at least one file with blocks)
-                    const hasValidBlocks = diffJson.some(file => file.blocks && file.blocks.length > 0);
-                    if (!hasValidBlocks) {
-                        const errorMsg = 'No valid diff blocks found. The content may not be in the expected diff/patch format.';
-                        logWarn('No diff blocks found in parsed result — ' + diffJson.length + ' file(s) parsed but none had content blocks');
                         diffOutput.innerHTML = '<div class="placeholder">' + errorMsg + '</div>';
                         return;
                     }
@@ -1076,7 +1072,14 @@ export class PatchEditorProvider implements vscode.CustomTextEditorProvider {
             }
             
             // Initialize
-            init();
+            try {
+                init();
+            } catch (error) {
+                logError('Fatal error during initialization', error);
+                if (diffOutput) {
+                    diffOutput.innerHTML = '<div class="placeholder">Failed to initialize the viewer. Please close and reopen the file.</div>';
+                }
+            }
         })();
     </script>
 </body>
