@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+## [1.0.3] - 2026-08-09
 
 ### Changed
 - Refactored the webview so the diff renderer runs from standalone static assets (`media/patchViewer.js` and `media/patchViewer.css`) loaded via `webview.asWebviewUri(...)`, instead of embedding the ~350‑line client script and CSS inside a TypeScript template literal. The browser now receives the script verbatim, eliminating the class of escaping bugs (`\n`, `</script>`, ...) that repeatedly broke the inline script.
